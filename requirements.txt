@@ -1,0 +1,5 @@
+streamlit
+streamlit-quill
+beautifulsoup4
+extra-streamlit-components
+pandas
