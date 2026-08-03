@@ -12,6 +12,7 @@ from auth import require_login
 require_login()
 
 st.set_page_config(page_title="Important Mails Reader", page_icon="⭐", layout="wide")
+
 st.title("⭐ Important Mails Reader (Inbox View)")
 st.write("Aapke starred/flagged important emails ko Inbox ki tarah properly HTML preview ke saath dekhein.")
 
@@ -27,7 +28,6 @@ if "email_pass" not in st.session_state:
 
 # --- SIDEBAR SETTINGS ---
 st.sidebar.header("⚙️ IMAP Login Settings")
-
 imap_server = st.sidebar.text_input("IMAP Server", value=st.session_state["imap_server"])
 imap_port = st.sidebar.number_input("Port", value=st.session_state["imap_port"])
 email_user = st.sidebar.text_input("Email Address", value=st.session_state["email_user"])
@@ -72,11 +72,9 @@ def parse_sender_info(from_addr):
         if not name:
             name = email_id.split('@')[0]
         return name, email_id
-    
     clean_addr = from_addr.strip()
     if "@" in clean_addr:
         return clean_addr.split('@')[0], clean_addr
-    
     return clean_addr, clean_addr
 
 def extract_email_body(msg):
@@ -98,7 +96,7 @@ def extract_email_body(msg):
             html_body = payload
         else:
             text_body = payload
-
+            
     if html_body:
         return html_body
     else:
@@ -114,15 +112,16 @@ if st.sidebar.button("Fetch Important Emails", type="primary"):
                 mail = imaplib.IMAP4_SSL(imap_server, port=imap_port)
                 mail.login(email_user, email_pass)
                 mail.select("inbox")
-
+                
                 since_str = start_date.strftime("%d-%b-%Y")
                 before_str = (end_date + timedelta(days=1)).strftime("%d-%b-%Y")
+                
                 search_criterion = f'FLAGGED SINCE "{since_str}" BEFORE "{before_str}"'
                 status, messages = mail.search(None, search_criterion)
-
+                
                 email_ids = messages[0].split()
                 fetched_records = []
-
+                
                 if email_ids:
                     latest_ids = email_ids[::-1]
                     for idx, e_id in enumerate(latest_ids):
@@ -136,9 +135,9 @@ if st.sidebar.button("Fetch Important Emails", type="primary"):
                                 from_addr = parse_header(msg.get("From"))
                                 date_str = msg.get("Date")
                                 body_content = extract_email_body(msg)
-
+                                
                                 sender_name, sender_email = parse_sender_info(from_addr)
-
+                                
                                 fetched_records.append({
                                     "subject": subject,
                                     "from_addr": from_addr,
@@ -147,11 +146,11 @@ if st.sidebar.button("Fetch Important Emails", type="primary"):
                                     "date_str": date_str,
                                     "body_content": body_content
                                 })
-
+                
                 mail.logout()
                 st.session_state["fetched_important_emails"] = fetched_records
                 st.rerun()
-
+                
         except Exception as e:
             st.error(f"❌ Error: {e}")
 
@@ -162,29 +161,30 @@ if "fetched_important_emails" in st.session_state:
         st.info("ℹ️ Selected date range me koi important emails nahi mile.")
     else:
         st.success(f"✅ Total {len(all_emails)} Important emails loaded.")
+        
+        # Domain extract karne ke liye helper logic
+        domain_str = email_user.split('@')[-1] if "@" in email_user else "mail"
 
-        # Export CSV Button (Proper 3 Columns)
-        csv_records = [
-            {
-                "Name": e["sender_name"],
-                "Email": e["sender_email"],
-                "Subject": e["subject"]
-            }
-            for e in all_emails
-        ]
+        # Export CSV Button (Proper 3 Columns with Domain Name and Date in Filename)
+        csv_records = [{
+            "Name": e["sender_name"],
+            "Email": e["sender_email"],
+            "Subject": e["subject"]
+        } for e in all_emails]
+        
         df = pd.DataFrame(csv_records, columns=["Name", "Email", "Subject"])
         csv_data = df.to_csv(index=False).encode('utf-8-sig')
-
+        
         st.download_button(
             label="📥 Export to CSV (Name, Email, Subject)",
             data=csv_data,
-            file_name=f"important_emails_{today}.csv",
+            file_name=f"important_emails_{domain_str}_{today}.csv",
             mime="text/csv",
             type="primary"
         )
-
+        
         st.divider()
-
+        
         # Render All Emails Directly
         for item in all_emails:
             with st.expander(f"⭐ **{item['subject']}** — *From: {item['from_addr']}*"):
