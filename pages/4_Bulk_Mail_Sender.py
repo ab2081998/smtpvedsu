@@ -20,6 +20,7 @@ if parent_dir not in sys.path:
 
 try:
     import auth
+
     if hasattr(auth, "require_auth"):
         auth.require_auth()
     elif hasattr(auth, "check_auth"):
@@ -41,8 +42,8 @@ try:
                 else:
                     st.error("❌ Incorrect password!")
                     st.stop()
-            else:
-                st.stop()
+        else:
+            st.stop()
 except ImportError:
     st.error("❌ auth.py import nahi ho pa raha hai.")
     st.stop()
@@ -174,14 +175,12 @@ if uploaded_file is not None:
     try:
         df = pd.read_csv(uploaded_file)
         df.columns = df.columns.str.strip()
-
         if len(df.columns) < 2:
             st.error("❌ CSV file me kam se kam 2 columns hona compulsory hain (Name, Email)!")
             df = None
         else:
             name_col = df.columns[0]
             email_col = df.columns[1]
-
             for col in df.columns:
                 if col.lower() == "email":
                     email_col = col
@@ -204,6 +203,7 @@ selected_template_name = st.selectbox(
     "Select Template:", list(TEMPLATES.keys())
 )
 template_content = TEMPLATES[selected_template_name]
+
 subject_input = st.text_input(
     "Email Subject:", value="Update for {Name}"
 )
@@ -279,17 +279,16 @@ if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
                 <!DOCTYPE html>
                 <html>
                 <head>
-                <style>
-                    p {{ margin: 0 0 6px 0 !important; padding: 0 !important; line-height: 1.4 !important; }}
-                    div {{ margin: 0 !important; padding: 0 !important; line-height: 1.4 !important; }}
-                </style>
+                    <style>
+                        p {{ margin: 0 0 6px 0 !important; padding: 0 !important; line-height: 1.4 !important; }}
+                        div {{ margin: 0 !important; padding: 0 !important; line-height: 1.4 !important; }}
+                    </style>
                 </head>
                 <body style="font-family: Arial, sans-serif; font-size: 14px; color: #333333; line-height: 1.4; margin: 0; padding: 10px;">
-                {custom_body}
+                    {custom_body}
                 </body>
                 </html>
                 """
-
                 msg.attach(MIMEText(clean_formatted_html, "html"))
 
                 if int(smtp_port) == 465:
@@ -335,3 +334,23 @@ if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
         st.markdown("**Campaign Summary Report**")
         log_df = pd.DataFrame(logs)
         st.dataframe(log_df, use_container_width=True)
+
+        # --- DOWNLOAD REPORT WITH SUBJECT & DATE IN FILENAME ---
+        # 1. Subject line se special/invalid characters safe filename ke liye remove karna
+        safe_subject = re.sub(r'[^\w\s-]', '', subject_input).strip().replace(' ', '_')
+        if not safe_subject:
+            safe_subject = "Campaign_Report"
+
+        # 2. Today's Date format YYYY-MM-DD
+        today_date = time.strftime("%Y-%m-%d")
+        download_filename = f"{safe_subject}_{today_date}.csv"
+
+        # 3. CSV Download Button
+        csv_data = log_df.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            label="📥 Download Campaign Report (CSV)",
+            data=csv_data,
+            file_name=download_filename,
+            mime="text/csv",
+            type="primary"
+        )
