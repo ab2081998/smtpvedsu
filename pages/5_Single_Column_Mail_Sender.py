@@ -8,6 +8,7 @@ import sys
 import time
 import pandas as pd
 import streamlit as st
+from streamlit_quill import st_quill
 
 # --- 0. AUTHENTICATION & SESSION CHECK ---
 if "authenticated" not in st.session_state:
@@ -85,7 +86,7 @@ DEFAULT_TEMPLATE = """<p>Hello {Name},</p>
 <p>I hope this email finds you well.</p>
 <p>Write your message here...</p>"""
 
-# Editor content ko persistent rakhne ke liye Session State
+# Persistent Session State for Quill content
 if "editor_text" not in st.session_state:
     st.session_state["editor_text"] = DEFAULT_TEMPLATE
 
@@ -200,14 +201,13 @@ subject_input = st.text_input(
     "Email Subject:", value="Important Announcement"
 )
 
-# Stable Native Text Area
-editor_content = st.text_area(
-    "Email Body (HTML Supported):",
+# Quill Text Editor with Session State
+editor_content = st.st_quill(
     value=st.session_state["editor_text"],
-    height=250,
+    html=True,
+    key="quill_single_col_custom",
 )
 
-# Session State updates smoothly without crashing
 if editor_content:
     st.session_state["editor_text"] = editor_content
 
@@ -232,8 +232,6 @@ if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
     sender_name = st.session_state["smtp_name"]
 
     total_records = len(df)
-
-    # Active editor content value read karna
     current_body = st.session_state["editor_text"]
 
     with notification_box:
