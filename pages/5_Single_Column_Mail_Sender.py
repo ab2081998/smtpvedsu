@@ -8,7 +8,6 @@ import sys
 import time
 import pandas as pd
 import streamlit as st
-from streamlit_ckeditor import st_ckeditor
 
 # --- 0. AUTHENTICATION & SESSION CHECK ---
 if "authenticated" not in st.session_state:
@@ -201,13 +200,14 @@ subject_input = st.text_input(
     "Email Subject:", value="Important Announcement"
 )
 
-# Option C: CKEditor implementation
-editor_content = st_ckeditor(
+# Stable Native Text Area
+editor_content = st.text_area(
+    "Email Body (HTML Supported):",
     value=st.session_state["editor_text"],
-    key="ckeditor_single_col",
+    height=250,
 )
 
-# Text update ko session_state mein sync karna
+# Session State updates smoothly without crashing
 if editor_content:
     st.session_state["editor_text"] = editor_content
 
