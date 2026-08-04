@@ -8,7 +8,7 @@ import sys
 import time
 import pandas as pd
 import streamlit as st
-from streamlit_quill import st_quill
+from streamlit_ckeditor import st_ckeditor
 
 # --- 0. AUTHENTICATION & SESSION CHECK ---
 if "authenticated" not in st.session_state:
@@ -41,8 +41,7 @@ try:
                     st.rerun()
                 else:
                     st.error("❌ Incorrect password!")
-            st.stop()
-
+                    st.stop()
 except ImportError:
     if not st.session_state["authenticated"]:
         st.warning("🔒 Access Restricted! Please enter root password.")
@@ -59,7 +58,7 @@ except ImportError:
                 st.rerun()
             else:
                 st.error("❌ Incorrect password!")
-        st.stop()
+                st.stop()
 
 # --- 1. DEFAULT SECRETS FETCH & SESSION STATE SETUP ---
 DEF_EMAIL = st.secrets.get("DEFAULT_SMTP_EMAIL", "")
@@ -82,10 +81,15 @@ if "smtp_port" not in st.session_state:
 if "smtp_name" not in st.session_state:
     st.session_state["smtp_name"] = DEF_NAME
 
-# Only Custom (Blank) Template
+# Default Template Text
 DEFAULT_TEMPLATE = """<p>Hello {Name},</p>
 <p>I hope this email finds you well.</p>
 <p>Write your message here...</p>"""
+
+# Editor content ko persistent rakhne ke liye Session State
+if "editor_text" not in st.session_state:
+    st.session_state["editor_text"] = DEFAULT_TEMPLATE
+
 
 # --- 2. SIDEBAR CONFIG (DYNAMIC UPDATES & RESET) ---
 with st.sidebar:
@@ -107,7 +111,9 @@ with st.sidebar:
         type="password",
     )
     s_server = st.text_input("SMTP Server:", value=st.session_state["smtp_server"])
-    s_port = st.number_input("SMTP Port:", value=int(st.session_state["smtp_port"]), step=1)
+    s_port = st.number_input(
+        "SMTP Port:", value=int(st.session_state["smtp_port"]), step=1
+    )
     s_name = st.text_input("Sender Name:", value=st.session_state["smtp_name"])
 
     col1, col2 = st.columns(2)
@@ -121,6 +127,7 @@ with st.sidebar:
             st.session_state["smtp_name"] = s_name.strip()
             st.success("✅ Credentials Updated!")
             st.rerun()
+
     with col2:
         if st.button("🔄 Reset Default", use_container_width=True):
             st.session_state["smtp_email"] = DEF_EMAIL
@@ -138,6 +145,7 @@ with st.sidebar:
         st.success("👋 Logged out!")
         st.rerun()
 
+
 # --- 3. MAIN UI ---
 st.markdown("**📢 Single Column Mail Sender (Email Only)**")
 st.caption("Send emails directly using a CSV containing only Email addresses.")
@@ -152,6 +160,7 @@ if st.session_state["smtp_email"]:
 else:
     st.warning("⚠️ Pehle Sidebar me SMTP Details save karein ya secrets.toml setup karein!")
     st.stop()
+
 
 # --- STEP A: CSV UPLOAD ---
 st.markdown("**1. Upload CSV File**")
@@ -177,7 +186,6 @@ if uploaded_file is not None:
                 if col.lower() == "email":
                     email_col = col
                     break
-
             st.success(f"✅ CSV Loaded! Total Records: {len(df)}")
             st.info(f"📌 **Selected Email Column:** `{email_col}`")
             st.dataframe(df.head(5), use_container_width=True)
@@ -186,21 +194,25 @@ if uploaded_file is not None:
 
 st.divider()
 
+
 # --- STEP B: EMAIL CONTENT ---
 st.markdown("**2. Email Content**")
-
 subject_input = st.text_input(
     "Email Subject:", value="Important Announcement"
 )
 
-# Text Editor (Only Custom Blank Template)
-editor_content = st_quill(
-    value=DEFAULT_TEMPLATE,
-    html=True,
-    key="quill_single_col_custom",
+# Option C: CKEditor implementation
+editor_content = st_ckeditor(
+    value=st.session_state["editor_text"],
+    key="ckeditor_single_col",
 )
 
+# Text update ko session_state mein sync karna
+if editor_content:
+    st.session_state["editor_text"] = editor_content
+
 st.divider()
+
 
 # --- STEP C: BULK SENDING LOGIC ---
 st.markdown("**3. Start Bulk Campaign**")
@@ -221,9 +233,13 @@ if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
 
     total_records = len(df)
 
+    # Active editor content value read karna
+    current_body = st.session_state["editor_text"]
+
     with notification_box:
         progress_bar = st.progress(0)
         status_text = st.empty()
+
         success_count = 0
         failed_count = 0
         logs = []
@@ -245,7 +261,7 @@ if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
                 continue
 
             custom_subject = subject_input.replace("{Name}", FALLBACK_NAME)
-            custom_body = editor_content.replace("{Name}", FALLBACK_NAME)
+            custom_body = current_body.replace("{Name}", FALLBACK_NAME)
 
             try:
                 msg = MIMEMultipart("alternative")
@@ -257,16 +273,17 @@ if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
                 <!DOCTYPE html>
                 <html>
                 <head>
-                    <style>
-                        p {{ margin: 0 0 6px 0 !important; padding: 0 !important; line-height: 1.4 !important; }}
-                        div {{ margin: 0 !important; padding: 0 !important; line-height: 1.4 !important; }}
-                    </style>
+                <style>
+                    p {{ margin: 0 0 6px 0 !important; padding: 0 !important; line-height: 1.4 !important; }}
+                    div {{ margin: 0 !important; padding: 0 !important; line-height: 1.4 !important; }}
+                </style>
                 </head>
                 <body style="font-family: Arial, sans-serif; font-size: 14px; color: #333333; line-height: 1.4; margin: 0; padding: 10px;">
                     {custom_body}
                 </body>
                 </html>
                 """
+
                 msg.attach(MIMEText(clean_formatted_html, "html"))
 
                 if int(smtp_port) == 465:
@@ -307,6 +324,7 @@ if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
         st.success(
             f"🎯 **Campaign Finished!** Mails Sent: **{success_count}** | Failed: **{failed_count}**"
         )
+
         st.markdown("**Campaign Summary Report**")
         log_df = pd.DataFrame(logs)
         st.dataframe(log_df, use_container_width=True)
@@ -315,7 +333,6 @@ if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
         safe_subject = re.sub(r'[^\w\s-]', '', subject_input).strip().replace(' ', '_')
         if not safe_subject:
             safe_subject = "Campaign_Report"
-
         today_date = time.strftime("%Y-%m-%d")
         download_filename = f"{safe_subject}_{today_date}.csv"
 
