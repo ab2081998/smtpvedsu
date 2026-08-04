@@ -87,16 +87,7 @@ TEMPLATES = {
     "Custom (Blank)": """<p>Hello {Name},</p>
 <p>I hope this email finds you well.</p>
 <p>Write your message here...</p>""",
-    "Welcome Email": """
-<div style="font-family: Arial, sans-serif; padding: 15px; border: 1px solid #e0e0e0; border-radius: 8px;">
-    <p style="margin: 0 0 8px 0;">Hi {Name},</p>
-    <p style="margin: 0 0 8px 0;">I hope this email finds you well.</p>
-    <p style="margin: 0 0 8px 0;">Thank you for connecting with us! We are thrilled to have you on board.</p>
-    <p style="margin: 0 0 8px 0;">If you have any questions, feel free to reply directly to this email.</p>
-    <p style="margin: 12px 0 0 0;">Best Regards,<br><b>Support Team</b></p>
-</div>
-""",
-    "Notification / Alert": """
+        "Notification / Alert": """
 <div style="font-family: Arial, sans-serif; padding: 15px; border: 1px solid #d9edf7; border-radius: 8px; background-color: #f4f8fa;">
     <p style="margin: 0 0 8px 0;">Hi {Name},</p>
     <p style="margin: 0 0 8px 0;">I hope this email finds you well.</p>
