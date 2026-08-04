@@ -8,7 +8,6 @@ import sys
 import time
 import pandas as pd
 import streamlit as st
-from streamlit_quill import st_quill
 
 # --- 0. AUTHENTICATION & SESSION CHECK ---
 if "authenticated" not in st.session_state:
@@ -86,7 +85,7 @@ DEFAULT_TEMPLATE = """<p>Hello {Name},</p>
 <p>I hope this email finds you well.</p>
 <p>Write your message here...</p>"""
 
-# Persistent Session State for Quill content
+# Session State for Email Body Content
 if "editor_text" not in st.session_state:
     st.session_state["editor_text"] = DEFAULT_TEMPLATE
 
@@ -201,11 +200,11 @@ subject_input = st.text_input(
     "Email Subject:", value="Important Announcement"
 )
 
-# FIXED: Direct st_quill call (Removed st.st_quill)
-editor_content = st_quill(
+# Built-in Text Area (HTML & Plain Text Supported)
+editor_content = st.text_area(
+    "Email Body (HTML Supported):",
     value=st.session_state["editor_text"],
-    html=True,
-    key="quill_single_col_custom",
+    height=250,
 )
 
 if editor_content:
