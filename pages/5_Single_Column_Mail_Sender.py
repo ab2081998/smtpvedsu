@@ -8,6 +8,7 @@ import sys
 import time
 import pandas as pd
 import streamlit as st
+from streamlit_quill import st_quill
 
 # --- 0. AUTHENTICATION & SESSION CHECK ---
 if "authenticated" not in st.session_state:
@@ -85,7 +86,7 @@ DEFAULT_TEMPLATE = """<p>Hello {Name},</p>
 <p>I hope this email finds you well.</p>
 <p>Write your message here...</p>"""
 
-# Session State for Email Body Content
+# Persistent Session State for Quill content
 if "editor_text" not in st.session_state:
     st.session_state["editor_text"] = DEFAULT_TEMPLATE
 
@@ -179,7 +180,6 @@ if uploaded_file is not None:
             st.error("❌ CSV file khali lag rahi hai!")
             df = None
         else:
-            # First preference: Column named 'email'
             email_col = df.columns[0]
             for col in df.columns:
                 if col.lower() == "email":
@@ -200,13 +200,14 @@ subject_input = st.text_input(
     "Email Subject:", value="Important Announcement"
 )
 
-# Built-in Text Area (HTML & Plain Text Supported)
-editor_content = st.text_area(
-    "Email Body (HTML Supported):",
+# Quill Editor with persistent value
+editor_content = st_quill(
     value=st.session_state["editor_text"],
-    height=250,
+    html=True,
+    key="quill_single_col_custom",
 )
 
+# Update state whenever content changes
 if editor_content:
     st.session_state["editor_text"] = editor_content
 
@@ -326,7 +327,6 @@ if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
         log_df = pd.DataFrame(logs)
         st.dataframe(log_df, use_container_width=True)
 
-        # --- DOWNLOAD REPORT WITH SUBJECT & DATE IN FILENAME ---
         safe_subject = re.sub(r'[^\w\s-]', '', subject_input).strip().replace(' ', '_')
         if not safe_subject:
             safe_subject = "Campaign_Report"
