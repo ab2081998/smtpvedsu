@@ -11,54 +11,23 @@ import streamlit as st
 from streamlit_quill import st_quill
 
 # --- 0. AUTHENTICATION & SESSION CHECK ---
-if "authenticated" not in st.session_state:
-    st.session_state["authenticated"] = False
-
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if parent_dir not in sys.path:
     sys.path.append(parent_dir)
 
-try:
-    import auth
+import auth
 
-    if hasattr(auth, "require_auth"):
-        auth.require_auth()
-    elif hasattr(auth, "check_auth"):
-        auth.check_auth()
-    else:
-        if not st.session_state["authenticated"]:
-            st.warning("🔒 Access Restricted! Please enter root password.")
-            user_pass = st.text_input(
-                "Please enter Password (Default is: root)",
-                type="password",
-                key="single_col_auth_pass_input",
-            )
-            CORRECT_PASSWORD = st.secrets.get("PASSWORD", "root")
-            if st.button("Unlock Page"):
-                if user_pass == CORRECT_PASSWORD:
-                    st.session_state["authenticated"] = True
-                    st.success("✅ Password correct!")
-                    st.rerun()
-                else:
-                    st.error("❌ Incorrect password!")
-                    st.stop()
-except ImportError:
-    if not st.session_state["authenticated"]:
-        st.warning("🔒 Access Restricted! Please enter root password.")
-        user_pass = st.text_input(
-            "Please enter Password (Default is: root)",
-            type="password",
-            key="single_col_auth_pass_input",
-        )
-        CORRECT_PASSWORD = st.secrets.get("PASSWORD", "root")
-        if st.button("Unlock Page"):
-            if user_pass == CORRECT_PASSWORD:
-                st.session_state["authenticated"] = True
-                st.success("✅ Password correct!")
-                st.rerun()
-            else:
-                st.error("❌ Incorrect password!")
-                st.stop()
+# Force Authentication Check via auth.py
+if hasattr(auth, "require_auth"):
+    auth.require_auth()
+elif hasattr(auth, "check_auth"):
+    auth.check_auth()
+
+# Fallback session check if auth module uses session state
+if not st.session_state.get("authenticated", False):
+    st.error("🔒 Access Denied! Please login first.")
+    st.stop()
+
 
 # --- 1. DEFAULT SECRETS FETCH & SESSION STATE SETUP ---
 DEF_EMAIL = st.secrets.get("DEFAULT_SMTP_EMAIL", "")
@@ -126,7 +95,6 @@ with st.sidebar:
             st.session_state["smtp_name"] = s_name.strip()
             st.success("✅ Credentials Updated!")
             st.rerun()
-
     with col2:
         if st.button("🔄 Reset Default", use_container_width=True):
             st.session_state["smtp_email"] = DEF_EMAIL
@@ -159,7 +127,6 @@ else:
     st.warning("⚠️ Pehle Sidebar me SMTP Details save karein ya secrets.toml setup karein!")
     st.stop()
 
-
 # --- STEP A: CSV UPLOAD ---
 st.markdown("**1. Upload CSV File**")
 uploaded_file = st.file_uploader(
@@ -175,6 +142,7 @@ if uploaded_file is not None:
     try:
         df = pd.read_csv(uploaded_file)
         df.columns = df.columns.str.strip()
+
         if len(df.columns) < 1:
             st.error("❌ CSV file khali lag rahi hai!")
             df = None
@@ -184,6 +152,7 @@ if uploaded_file is not None:
                 if col.lower() == "email":
                     email_col = col
                     break
+
             st.success(f"✅ CSV Loaded! Total Records: {len(df)}")
             st.info(f"📌 **Selected Email Column:** `{email_col}`")
             st.dataframe(df.head(5), use_container_width=True)
@@ -192,10 +161,8 @@ if uploaded_file is not None:
 
 st.divider()
 
-
 # --- STEP B: EMAIL CONTENT (FORM WRAPPER FIX) ---
 st.markdown("**2. Email Content**")
-
 with st.form(key="email_content_form"):
     subject_input = st.text_input(
         "Email Subject:", value="Important Announcement"
@@ -207,7 +174,7 @@ with st.form(key="email_content_form"):
         html=True,
         key="quill_editor_fixed",
     )
-    
+
     save_draft = st.form_submit_button("💾 Save Template / Content")
     if save_draft and quill_res:
         st.session_state["editor_text"] = quill_res
@@ -219,10 +186,10 @@ if quill_res and quill_res != st.session_state["editor_text"]:
 
 st.divider()
 
-
 # --- STEP C: BULK SENDING LOGIC ---
 st.markdown("**3. Start Bulk Campaign**")
 notification_box = st.container()
+
 FALLBACK_NAME = "there"
 
 if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
@@ -243,7 +210,6 @@ if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
     with notification_box:
         progress_bar = st.progress(0)
         status_text = st.empty()
-
         success_count = 0
         failed_count = 0
         logs = []
@@ -278,16 +244,15 @@ if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
                 <html>
                 <head>
                 <style>
-                    p {{ margin: 0 0 6px 0 !important; padding: 0 !important; line-height: 1.4 !important; }}
-                    div {{ margin: 0 !important; padding: 0 !important; line-height: 1.4 !important; }}
+                  p {{ margin: 0 0 6px 0 !important; padding: 0 !important; line-height: 1.4 !important; }}
+                  div {{ margin: 0 !important; padding: 0 !important; line-height: 1.4 !important; }}
                 </style>
                 </head>
                 <body style="font-family: Arial, sans-serif; font-size: 14px; color: #333333; line-height: 1.4; margin: 0; padding: 10px;">
-                    {custom_body}
+                  {custom_body}
                 </body>
                 </html>
                 """
-
                 msg.attach(MIMEText(clean_formatted_html, "html"))
 
                 if int(smtp_port) == 465:
@@ -328,7 +293,6 @@ if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
         st.success(
             f"🎯 **Campaign Finished!** Mails Sent: **{success_count}** | Failed: **{failed_count}**"
         )
-
         st.markdown("**Campaign Summary Report**")
         log_df = pd.DataFrame(logs)
         st.dataframe(log_df, use_container_width=True)
