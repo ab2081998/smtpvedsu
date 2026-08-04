@@ -26,7 +26,7 @@ try:
     elif hasattr(auth, "check_auth"):
         auth.check_auth()
     else:
-        if not st.session_state.get("authenticated", False):
+        if not st.session_state["authenticated"]:
             st.warning("🔒 Access Restricted! Please enter root password.")
             user_pass = st.text_input(
                 "Please enter Password",
@@ -41,12 +41,25 @@ try:
                     st.rerun()
                 else:
                     st.error("❌ Incorrect password!")
-                    st.stop()
-        else:
             st.stop()
+
 except ImportError:
-    st.error("❌ auth.py import nahi ho pa raha hai.")
-    st.stop()
+    if not st.session_state["authenticated"]:
+        st.warning("🔒 Access Restricted! Please enter root password.")
+        user_pass = st.text_input(
+            "Please enter Password",
+            type="password",
+            key="bulk_auth_pass_input",
+        )
+        CORRECT_PASSWORD = st.secrets.get("PASSWORD", "root")
+        if st.button("Unlock Page"):
+            if user_pass == CORRECT_PASSWORD:
+                st.session_state["authenticated"] = True
+                st.success("✅ Password correct!")
+                st.rerun()
+            else:
+                st.error("❌ Incorrect password!")
+        st.stop()
 
 # --- 1. DEFAULT SECRETS FETCH & SESSION STATE SETUP ---
 DEF_EMAIL = st.secrets.get("DEFAULT_SMTP_EMAIL", "")
