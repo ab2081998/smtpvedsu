@@ -81,17 +81,16 @@ if "smtp_port" not in st.session_state:
 if "smtp_name" not in st.session_state:
     st.session_state["smtp_name"] = DEF_NAME
 
-# Default Template Text
 DEFAULT_TEMPLATE = """<p>Hello {Name},</p>
 <p>I hope this email finds you well.</p>
 <p>Write your message here...</p>"""
 
-# Persistent Session State for Quill content
+# Persistent session state
 if "editor_text" not in st.session_state:
     st.session_state["editor_text"] = DEFAULT_TEMPLATE
 
 
-# --- 2. SIDEBAR CONFIG (DYNAMIC UPDATES & RESET) ---
+# --- 2. SIDEBAR CONFIG ---
 with st.sidebar:
     st.divider()
     st.markdown("**⚙️ SMTP Config**")
@@ -150,7 +149,6 @@ with st.sidebar:
 st.markdown("**📢 Single Column Mail Sender (Email Only)**")
 st.caption("Send emails directly using a CSV containing only Email addresses.")
 
-# Active sender status indicator
 if st.session_state["smtp_email"]:
     st.info(
         f"📧 **Active Sender:** `{st.session_state['smtp_name']} <{st.session_state['smtp_email']}>` "
@@ -167,6 +165,7 @@ st.markdown("**1. Upload CSV File**")
 uploaded_file = st.file_uploader(
     "Upload CSV file (Containing Email column):",
     type=["csv"],
+    key="single_col_csv_file_uploader",
 )
 
 df = None
@@ -194,22 +193,29 @@ if uploaded_file is not None:
 st.divider()
 
 
-# --- STEP B: EMAIL CONTENT ---
+# --- STEP B: EMAIL CONTENT (FORM WRAPPER FIX) ---
 st.markdown("**2. Email Content**")
-subject_input = st.text_input(
-    "Email Subject:", value="Important Announcement"
-)
 
-# Quill Editor with persistent value
-editor_content = st_quill(
-    value=st.session_state["editor_text"],
-    html=True,
-    key="quill_single_col_custom",
-)
+with st.form(key="email_content_form"):
+    subject_input = st.text_input(
+        "Email Subject:", value="Important Announcement"
+    )
 
-# Update state whenever content changes
-if editor_content:
-    st.session_state["editor_text"] = editor_content
+    # Quill Editor inside form prevents state loss on external triggers like file uploads
+    quill_res = st_quill(
+        value=st.session_state["editor_text"],
+        html=True,
+        key="quill_editor_fixed",
+    )
+    
+    save_draft = st.form_submit_button("💾 Save Template / Content")
+    if save_draft and quill_res:
+        st.session_state["editor_text"] = quill_res
+        st.success("✅ Content Saved!")
+
+# Backup check if editor returned value outside submit
+if quill_res and quill_res != st.session_state["editor_text"]:
+    st.session_state["editor_text"] = quill_res
 
 st.divider()
 
