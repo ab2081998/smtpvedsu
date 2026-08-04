@@ -29,7 +29,7 @@ try:
         if not st.session_state["authenticated"]:
             st.warning("🔒 Access Restricted! Please enter root password.")
             user_pass = st.text_input(
-                "Please enter Password",
+                "Please enter Password (Default is: root)",
                 type="password",
                 key="single_col_auth_pass_input",
             )
@@ -46,7 +46,7 @@ except ImportError:
     if not st.session_state["authenticated"]:
         st.warning("🔒 Access Restricted! Please enter root password.")
         user_pass = st.text_input(
-            "Please enter Password",
+            "Please enter Password (Default is: root)",
             type="password",
             key="single_col_auth_pass_input",
         )
@@ -201,8 +201,8 @@ subject_input = st.text_input(
     "Email Subject:", value="Important Announcement"
 )
 
-# Quill Text Editor with Session State
-editor_content = st.st_quill(
+# FIXED: Direct st_quill call (Removed st.st_quill)
+editor_content = st_quill(
     value=st.session_state["editor_text"],
     html=True,
     key="quill_single_col_custom",
