@@ -47,41 +47,35 @@ st.markdown(
 
 st.divider()
 
-# --- QUICK ACCESS / PAGES HYPERLINKS NAVIGATION ---
-st.subheader("⚡ Quick Navigation & Suite Tools")
-st.caption("Click on any tool below to open it directly.")
+# --- QUICK ACCESS / COMPACT HYPERLINKS NAVIGATION ---
+st.subheader("⚡ Quick Navigation")
 
-col1, col2, col3 = st.columns(3)
+nav_col1, nav_col2, nav_col3 = st.columns(3)
 
-with col1:
-    with st.container(border=True):
-        st.markdown("#### ⭐ Important Mails")
-        st.caption("Fetch & view starred emails with HTML preview.")
-        st.page_link(
-            "pages/2_Important_Mails.py", label="Open Reader", icon="⭐"
-        )
+with nav_col1:
+    st.page_link(
+        "pages/2_Important_Mails.py",
+        label="⭐ Important Mails Reader",
+        use_container_width=True,
+    )
 
-with col2:
-    with st.container(border=True):
-        st.markdown("#### 📨 Bulk Mail Sender")
-        st.caption("Send email campaigns via CSV list import.")
-        st.page_link(
-            "pages/4_Bulk_Mail_Sender.py", label="Launch Bulk Sender", icon="📨"
-        )
+with nav_col2:
+    st.page_link(
+        "pages/4_Bulk_Mail_Sender.py",
+        label="📨 Bulk Mail Sender",
+        use_container_width=True,
+    )
 
-with col3:
-    with st.container(border=True):
-        st.markdown("#### 📋 Single Column Mailer")
-        st.caption("Dispatch mails for single-column contact lists.")
-        st.page_link(
-            "pages/5_Single_Column_Mail_Sender.py",
-            label="Open Single Mailer",
-            icon="📋",
-        )
+with nav_col3:
+    st.page_link(
+        "pages/5_Single_Column_Mail_Sender.py",
+        label="📋 Single Column Mailer",
+        use_container_width=True,
+    )
 
 st.divider()
 
-# --- SAMPLE CSV DOWNLOAD SECTION ---
+# --- SAMPLE CSV DOWNLOAD SECTION (COMPACT & NO PREVIEW) ---
 st.subheader("📁 Campaign Template (`testsmtp.csv`)")
 st.caption("Download the standardized template to prepare your email lists.")
 
@@ -108,17 +102,10 @@ if sample_df is None:
 
 csv_data = sample_df.to_csv(index=False).encode("utf-8")
 
-col_btn, col_preview = st.columns([1, 2])
-with col_btn:
-    st.download_button(
-        label="📥 Download Template CSV",
-        data=csv_data,
-        file_name="testsmtp.csv",
-        mime="text/csv",
-        type="primary",
-        use_container_width=True,
-    )
-
-with col_preview:
-    with st.expander("📄 Preview CSV Structure"):
-        st.dataframe(sample_df, use_container_width=True)
+st.download_button(
+    label="📥 Download Template CSV",
+    data=csv_data,
+    file_name="testsmtp.csv",
+    mime="text/csv",
+    type="primary",
+)
