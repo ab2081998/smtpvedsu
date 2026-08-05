@@ -110,28 +110,12 @@ with st.sidebar:
     )
     selected_profile = st.session_state["smtp_profiles"][selected_profile_name]
 
-    # --- Profile Save / Update Name (⚙️ SMTP Configurations ke niche) ---
+    # --- Profile Save Name (Top Position) ---
     profile_save_name = st.text_input(
         "Save As Profile Name:", value=selected_profile_name
     )
 
-    # Selected Profile ke values inputs mein pre-fill hongi
-    s_email = st.text_input("Sender Email (From):", value=selected_profile["email"])
-    s_user = st.text_input("SMTP Username:", value=selected_profile["user"])
-    s_pass = st.text_input(
-        "App Password / API Key:",
-        value=selected_profile["pass"],
-        type="password",
-    )
-    s_server = st.text_input("SMTP Server:", value=selected_profile["server"])
-    s_port = st.number_input(
-        "SMTP Port:", value=int(selected_profile["port"]), step=1
-    )
-    s_name = st.text_input("Sender Name:", value=selected_profile["name"])
-
-    st.markdown("---")
-
-    # Save Profile aur Reset Profile Buttons
+    # --- Save Profile & Reset Profile Buttons (Top Position) ---
     col1, col2 = st.columns(2)
     with col1:
         if st.button("💾 Save Profile", type="primary", use_container_width=True):
@@ -169,6 +153,22 @@ with st.sidebar:
 
             st.info("🔄 Restored Selected Profile Defaults!")
             st.rerun()
+
+    st.markdown("---")
+
+    # Selected Profile ke values inputs mein pre-fill hongi
+    s_email = st.text_input("Sender Email (From):", value=selected_profile["email"])
+    s_user = st.text_input("SMTP Username:", value=selected_profile["user"])
+    s_pass = st.text_input(
+        "App Password / API Key:",
+        value=selected_profile["pass"],
+        type="password",
+    )
+    s_server = st.text_input("SMTP Server:", value=selected_profile["server"])
+    s_port = st.number_input(
+        "SMTP Port:", value=int(selected_profile["port"]), step=1
+    )
+    s_name = st.text_input("Sender Name:", value=selected_profile["name"])
 
     st.divider()
     if st.button("🚪 Logout App"):
