@@ -110,7 +110,7 @@ with st.sidebar:
     )
     selected_profile = st.session_state["smtp_profiles"][selected_profile_name]
 
-    # --- Profile Save / Update Name ko Top Par Shifting ---
+    # --- Profile Save / Update Name (⚙️ SMTP Configurations ke niche) ---
     profile_save_name = st.text_input(
         "Save As Profile Name:", value=selected_profile_name
     )
@@ -131,6 +131,7 @@ with st.sidebar:
 
     st.markdown("---")
 
+    # Save Profile aur Reset Profile Buttons
     col1, col2 = st.columns(2)
     with col1:
         if st.button("💾 Save Profile", type="primary", use_container_width=True):
