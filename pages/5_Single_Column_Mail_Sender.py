@@ -91,7 +91,7 @@ if "smtp_port" not in st.session_state:
 if "smtp_name" not in st.session_state:
     st.session_state["smtp_name"] = first_profile["name"]
 
-DEFAULT_TEMPLATE = """<p>Hello {Name},</p>
+DEFAULT_TEMPLATE = """<p>Dear Valued {Name},</p>
 <p>I hope this email finds you well.</p>
 <p>Write your message here...</p>"""
 
@@ -264,7 +264,7 @@ st.markdown("**3. Start Bulk Campaign**")
 
 notification_box = st.container()
 
-FALLBACK_NAME = "there"
+FALLBACK_NAME = "Professional"
 
 if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
     if df is None or len(df) == 0:
