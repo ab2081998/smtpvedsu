@@ -27,18 +27,36 @@ if not st.session_state.get("authenticated", False):
     st.error("🔒 Access Denied! Please login first.")
     st.stop()
 
-# --- 1. DEFAULT SECRETS FETCH & MULTI-SMTP SESSION SETUP ---
-DEF_EMAIL = st.secrets.get("DEFAULT_SMTP_EMAIL", "")
-DEF_USER = st.secrets.get("DEFAULT_SMTP_USER", "")
-DEF_PASS = st.secrets.get("DEFAULT_SMTP_PASS", "")
-DEF_SERVER = st.secrets.get("DEFAULT_SMTP_SERVER", "smtp.resend.com")
-DEF_PORT = st.secrets.get("DEFAULT_SMTP_PORT", 587)
-DEF_NAME = st.secrets.get("DEFAULT_SMTP_NAME", "Bulk Mailer")
 
-# Profiles dictionary ko session state mein initialize karein
+# --- 1. SECRETS SE MULTI-SMTP ACCOUNTS FETCH KARNA ---
+smtp_secrets = st.secrets.get("smtp_accounts", {})
+
 if "smtp_profiles" not in st.session_state:
-    st.session_state["smtp_profiles"] = {
-        "Default Profile": {
+    st.session_state["smtp_profiles"] = {}
+
+    # 1. secrets.toml mein [smtp_accounts.xxx] format load karein
+    if smtp_secrets:
+        for acc_key, acc_data in smtp_secrets.items():
+            profile_label = acc_data.get("name", acc_key.title())
+            st.session_state["smtp_profiles"][profile_label] = {
+                "email": str(acc_data.get("email", "")),
+                "user": str(acc_data.get("user", "")),
+                "pass": str(acc_data.get("pass", "")),
+                "server": str(acc_data.get("server", "")),
+                "port": int(acc_data.get("port", 587)),
+                "name": str(acc_data.get("name", "")),
+            }
+
+    # 2. Fallback: Agar purani single DEFAULT_SMTP_ keys ho
+    if not st.session_state["smtp_profiles"]:
+        DEF_EMAIL = st.secrets.get("DEFAULT_SMTP_EMAIL", "")
+        DEF_USER = st.secrets.get("DEFAULT_SMTP_USER", "")
+        DEF_PASS = st.secrets.get("DEFAULT_SMTP_PASS", "")
+        DEF_SERVER = st.secrets.get("DEFAULT_SMTP_SERVER", "smtp.resend.com")
+        DEF_PORT = st.secrets.get("DEFAULT_SMTP_PORT", 587)
+        DEF_NAME = st.secrets.get("DEFAULT_SMTP_NAME", "Bulk Mailer")
+
+        st.session_state["smtp_profiles"]["Default Profile"] = {
             "email": DEF_EMAIL,
             "user": DEF_USER,
             "pass": DEF_PASS,
@@ -46,21 +64,22 @@ if "smtp_profiles" not in st.session_state:
             "port": DEF_PORT,
             "name": DEF_NAME,
         }
-    }
 
-# Current Active Credentials initialize karein
+# Initial Session Credentials set karein
+first_profile = list(st.session_state["smtp_profiles"].values())[0]
+
 if "smtp_email" not in st.session_state:
-    st.session_state["smtp_email"] = DEF_EMAIL
+    st.session_state["smtp_email"] = first_profile["email"]
 if "smtp_user" not in st.session_state:
-    st.session_state["smtp_user"] = DEF_USER
+    st.session_state["smtp_user"] = first_profile["user"]
 if "smtp_password" not in st.session_state:
-    st.session_state["smtp_password"] = DEF_PASS
+    st.session_state["smtp_password"] = first_profile["pass"]
 if "smtp_server" not in st.session_state:
-    st.session_state["smtp_server"] = DEF_SERVER
+    st.session_state["smtp_server"] = first_profile["server"]
 if "smtp_port" not in st.session_state:
-    st.session_state["smtp_port"] = DEF_PORT
+    st.session_state["smtp_port"] = first_profile["port"]
 if "smtp_name" not in st.session_state:
-    st.session_state["smtp_name"] = DEF_NAME
+    st.session_state["smtp_name"] = first_profile["name"]
 
 DEFAULT_TEMPLATE = """<p>Hello {Name},</p>
 <p>I hope this email finds you well.</p>
@@ -77,27 +96,34 @@ with st.sidebar:
 
     # Dropdown se Profile Select karne ka Option
     profile_names = list(st.session_state["smtp_profiles"].keys())
-    selected_profile_name = st.selectbox("Select Active SMTP Profile:", options=profile_names)
-    
+    selected_profile_name = st.selectbox(
+        "Select Active SMTP Profile:", options=profile_names
+    )
     selected_profile = st.session_state["smtp_profiles"][selected_profile_name]
 
     # Selected Profile ke values inputs mein pre-fill hongi
     s_email = st.text_input("Sender Email (From):", value=selected_profile["email"])
     s_user = st.text_input("SMTP Username:", value=selected_profile["user"])
-    s_pass = st.text_input("App Password / API Key:", value=selected_profile["pass"], type="password")
+    s_pass = st.text_input(
+        "App Password / API Key:", value=selected_profile["pass"], type="password"
+    )
     s_server = st.text_input("SMTP Server:", value=selected_profile["server"])
-    s_port = st.number_input("SMTP Port:", value=int(selected_profile["port"]), step=1)
+    s_port = st.number_input(
+        "SMTP Port:", value=int(selected_profile["port"]), step=1
+    )
     s_name = st.text_input("Sender Name:", value=selected_profile["name"])
 
     st.markdown("---")
     # Profile Save / Update Name
-    profile_save_name = st.text_input("Save As Profile Name:", value=selected_profile_name)
+    profile_save_name = st.text_input(
+        "Save As Profile Name:", value=selected_profile_name
+    )
 
     col1, col2 = st.columns(2)
     with col1:
         if st.button("💾 Save Profile", type="primary", use_container_width=True):
             p_name = profile_save_name.strip() or "Custom Profile"
-            
+
             # Update dictionary
             st.session_state["smtp_profiles"][p_name] = {
                 "email": s_email.strip(),
@@ -107,7 +133,7 @@ with st.sidebar:
                 "port": s_port,
                 "name": s_name.strip(),
             }
-            # Update currently active SMTP session state
+            # Update active session
             st.session_state["smtp_email"] = s_email.strip()
             st.session_state["smtp_user"] = s_user.strip()
             st.session_state["smtp_password"] = s_pass.strip()
@@ -119,14 +145,14 @@ with st.sidebar:
             st.rerun()
 
     with col2:
-        if st.button("🔄 Reset Default", use_container_width=True):
-            st.session_state["smtp_email"] = DEF_EMAIL
-            st.session_state["smtp_user"] = DEF_USER
-            st.session_state["smtp_password"] = DEF_PASS
-            st.session_state["smtp_server"] = DEF_SERVER
-            st.session_state["smtp_port"] = DEF_PORT
-            st.session_state["smtp_name"] = DEF_NAME
-            st.info("🔄 Restored Default Secrets!")
+        if st.button("🔄 Reset Profile", use_container_width=True):
+            st.session_state["smtp_email"] = selected_profile["email"]
+            st.session_state["smtp_user"] = selected_profile["user"]
+            st.session_state["smtp_password"] = selected_profile["pass"]
+            st.session_state["smtp_server"] = selected_profile["server"]
+            st.session_state["smtp_port"] = selected_profile["port"]
+            st.session_state["smtp_name"] = selected_profile["name"]
+            st.info("🔄 Restored Selected Profile Defaults!")
             st.rerun()
 
     st.divider()
@@ -140,7 +166,7 @@ with st.sidebar:
 st.markdown("**📢 Single Column Mail Sender (Email Only)**")
 st.caption("Send emails directly using a CSV containing only Email addresses.")
 
-# Select box me current values reflect karne ke liye sync check
+# Active inputs ko current session state mein sync karein
 st.session_state["smtp_email"] = s_email.strip()
 st.session_state["smtp_user"] = s_user.strip()
 st.session_state["smtp_password"] = s_pass.strip()
@@ -197,9 +223,7 @@ st.divider()
 # --- STEP B: EMAIL CONTENT ---
 st.markdown("**2. Email Content**")
 with st.form(key="email_content_form"):
-    subject_input = st.text_input(
-        "Email Subject:", value="Important Announcement"
-    )
+    subject_input = st.text_input("Email Subject:", value="Important Announcement")
 
     quill_res = st_quill(
         value=st.session_state["editor_text"],
@@ -318,9 +342,7 @@ if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
 
             current_progress = (index + 1) / total_records
             progress_bar.progress(current_progress)
-            status_text.text(
-                f"Sending {index + 1}/{total_records}: {recipient_email}"
-            )
+            status_text.text(f"Sending {index + 1}/{total_records}: {recipient_email}")
             time.sleep(0.2)
 
         st.success(
@@ -331,17 +353,17 @@ if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
         log_df = pd.DataFrame(logs)
         st.dataframe(log_df, use_container_width=True)
 
-        safe_subject = re.sub(r'[^\w\s-]', '', subject_input).strip().replace(' ', '_')
+        safe_subject = re.sub(r"[^\w\s-]", "", subject_input).strip().replace(" ", "_")
         if not safe_subject:
             safe_subject = "Campaign_Report"
         today_date = time.strftime("%Y-%m-%d")
         download_filename = f"{safe_subject}_{today_date}.csv"
 
-        csv_data = log_df.to_csv(index=False).encode('utf-8')
+        csv_data = log_df.to_csv(index=False).encode("utf-8")
         st.download_button(
             label="📥 Download Campaign Report (CSV)",
             data=csv_data,
             file_name=download_filename,
             mime="text/csv",
-            type="primary"
+            type="primary",
         )
