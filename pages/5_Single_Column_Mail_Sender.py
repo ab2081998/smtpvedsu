@@ -110,12 +110,17 @@ with st.sidebar:
     )
     selected_profile = st.session_state["smtp_profiles"][selected_profile_name]
 
-    # 1. Profile Save As Name Input (⚙️ SMTP Configurations ke niche)
+    # Profile Save As Name Input
     profile_save_name = st.text_input(
         "Save As Profile Name:", value=selected_profile_name
     )
 
-    # 2. Input Fields PEHLE define honge taaki Save Button variables ko read kar sake
+    # Top Buttons Container Create karein (UI me sabse upar buttons dikhane ke liye)
+    button_container = st.container()
+
+    st.markdown("---")
+
+    # Input Fields (Pehele render aur evaluate honge)
     s_email = st.text_input("Sender Email (From):", value=selected_profile["email"])
     s_user = st.text_input("SMTP Username:", value=selected_profile["user"])
     s_pass = st.text_input(
@@ -129,46 +134,45 @@ with st.sidebar:
     )
     s_name = st.text_input("Sender Name:", value=selected_profile["name"])
 
-    st.markdown("---")
+    # Now populate Top Button Container with Save and Reset buttons
+    with button_container:
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("💾 Save Profile", type="primary", use_container_width=True):
+                p_name = profile_save_name.strip() or "Custom Profile"
 
-    # 3. Save & Reset Buttons (Input fields ke niche takki variables defined ho)
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("💾 Save Profile", type="primary", use_container_width=True):
-            p_name = profile_save_name.strip() or "Custom Profile"
+                # Update dictionary
+                st.session_state["smtp_profiles"][p_name] = {
+                    "email": s_email.strip(),
+                    "user": s_user.strip(),
+                    "pass": s_pass.strip(),
+                    "server": s_server.strip(),
+                    "port": s_port,
+                    "name": s_name.strip(),
+                }
 
-            # Update dictionary
-            st.session_state["smtp_profiles"][p_name] = {
-                "email": s_email.strip(),
-                "user": s_user.strip(),
-                "pass": s_pass.strip(),
-                "server": s_server.strip(),
-                "port": s_port,
-                "name": s_name.strip(),
-            }
+                # Update active session
+                st.session_state["smtp_email"] = s_email.strip()
+                st.session_state["smtp_user"] = s_user.strip()
+                st.session_state["smtp_password"] = s_pass.strip()
+                st.session_state["smtp_server"] = s_server.strip()
+                st.session_state["smtp_port"] = s_port
+                st.session_state["smtp_name"] = s_name.strip()
 
-            # Update active session
-            st.session_state["smtp_email"] = s_email.strip()
-            st.session_state["smtp_user"] = s_user.strip()
-            st.session_state["smtp_password"] = s_pass.strip()
-            st.session_state["smtp_server"] = s_server.strip()
-            st.session_state["smtp_port"] = s_port
-            st.session_state["smtp_name"] = s_name.strip()
+                st.success(f"✅ Profile '{p_name}' Saved!")
+                st.rerun()
 
-            st.success(f"✅ Profile '{p_name}' Saved!")
-            st.rerun()
+        with col2:
+            if st.button("🔄 Reset Profile", use_container_width=True):
+                st.session_state["smtp_email"] = selected_profile["email"]
+                st.session_state["smtp_user"] = selected_profile["user"]
+                st.session_state["smtp_password"] = selected_profile["pass"]
+                st.session_state["smtp_server"] = selected_profile["server"]
+                st.session_state["smtp_port"] = selected_profile["port"]
+                st.session_state["smtp_name"] = selected_profile["name"]
 
-    with col2:
-        if st.button("🔄 Reset Profile", use_container_width=True):
-            st.session_state["smtp_email"] = selected_profile["email"]
-            st.session_state["smtp_user"] = selected_profile["user"]
-            st.session_state["smtp_password"] = selected_profile["pass"]
-            st.session_state["smtp_server"] = selected_profile["server"]
-            st.session_state["smtp_port"] = selected_profile["port"]
-            st.session_state["smtp_name"] = selected_profile["name"]
-
-            st.info("🔄 Restored Selected Profile Defaults!")
-            st.rerun()
+                st.info("🔄 Restored Selected Profile Defaults!")
+                st.rerun()
 
     st.divider()
     if st.button("🚪 Logout App"):
