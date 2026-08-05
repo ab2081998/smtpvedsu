@@ -3,7 +3,6 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import formataddr
 import os
-import re
 import smtplib
 import sys
 import time
@@ -396,19 +395,3 @@ if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
         st.markdown("**Campaign Summary Report**")
         log_df = pd.DataFrame(logs)
         st.dataframe(log_df, use_container_width=True)
-
-        safe_subject = re.sub(r"[^\w\s-]", "", subject_input).strip().replace(" ", "_")
-        if not safe_subject:
-            safe_subject = "Campaign_Report"
-
-        today_date = time.strftime("%Y-%m-%d")
-        download_filename = f"{safe_subject}_{today_date}.csv"
-
-        csv_data = log_df.to_csv(index=False).encode("utf-8")
-        st.download_button(
-            label="📥 Download Campaign Report (CSV)",
-            data=csv_data,
-            file_name=download_filename,
-            mime="text/csv",
-            type="primary",
-        )
