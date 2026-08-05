@@ -14,6 +14,7 @@ from streamlit_quill import st_quill
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if parent_dir not in sys.path:
     sys.path.append(parent_dir)
+
 import auth
 
 # Force Authentication Check via auth.py
@@ -34,36 +35,36 @@ smtp_secrets = st.secrets.get("smtp_accounts", {})
 if "smtp_profiles" not in st.session_state:
     st.session_state["smtp_profiles"] = {}
 
-    # 1. secrets.toml mein [smtp_accounts.xxx] format load karein
-    if smtp_secrets:
-        for acc_key, acc_data in smtp_secrets.items():
-            profile_label = acc_data.get("name", acc_key.title())
-            st.session_state["smtp_profiles"][profile_label] = {
-                "email": str(acc_data.get("email", "")),
-                "user": str(acc_data.get("user", "")),
-                "pass": str(acc_data.get("pass", "")),
-                "server": str(acc_data.get("server", "")),
-                "port": int(acc_data.get("port", 587)),
-                "name": str(acc_data.get("name", "")),
-            }
-
-    # 2. Fallback: Agar purani single DEFAULT_SMTP_ keys ho
-    if not st.session_state["smtp_profiles"]:
-        DEF_EMAIL = st.secrets.get("DEFAULT_SMTP_EMAIL", "")
-        DEF_USER = st.secrets.get("DEFAULT_SMTP_USER", "")
-        DEF_PASS = st.secrets.get("DEFAULT_SMTP_PASS", "")
-        DEF_SERVER = st.secrets.get("DEFAULT_SMTP_SERVER", "smtp.resend.com")
-        DEF_PORT = st.secrets.get("DEFAULT_SMTP_PORT", 587)
-        DEF_NAME = st.secrets.get("DEFAULT_SMTP_NAME", "Bulk Mailer")
-
-        st.session_state["smtp_profiles"]["Default Profile"] = {
-            "email": DEF_EMAIL,
-            "user": DEF_USER,
-            "pass": DEF_PASS,
-            "server": DEF_SERVER,
-            "port": DEF_PORT,
-            "name": DEF_NAME,
+# 1. secrets.toml mein [smtp_accounts.xxx] format load karein
+if smtp_secrets:
+    for acc_key, acc_data in smtp_secrets.items():
+        profile_label = acc_data.get("name", acc_key.title())
+        st.session_state["smtp_profiles"][profile_label] = {
+            "email": str(acc_data.get("email", "")),
+            "user": str(acc_data.get("user", "")),
+            "pass": str(acc_data.get("pass", "")),
+            "server": str(acc_data.get("server", "")),
+            "port": int(acc_data.get("port", 587)),
+            "name": str(acc_data.get("name", "")),
         }
+
+# 2. Fallback: Agar purani single DEFAULT_SMTP_ keys ho
+if not st.session_state["smtp_profiles"]:
+    DEF_EMAIL = st.secrets.get("DEFAULT_SMTP_EMAIL", "")
+    DEF_USER = st.secrets.get("DEFAULT_SMTP_USER", "")
+    DEF_PASS = st.secrets.get("DEFAULT_SMTP_PASS", "")
+    DEF_SERVER = st.secrets.get("DEFAULT_SMTP_SERVER", "smtp.resend.com")
+    DEF_PORT = st.secrets.get("DEFAULT_SMTP_PORT", 587)
+    DEF_NAME = st.secrets.get("DEFAULT_SMTP_NAME", "Bulk Mailer")
+
+    st.session_state["smtp_profiles"]["Default Profile"] = {
+        "email": DEF_EMAIL,
+        "user": DEF_USER,
+        "pass": DEF_PASS,
+        "server": DEF_SERVER,
+        "port": DEF_PORT,
+        "name": DEF_NAME,
+    }
 
 # Initial Session Credentials set karein
 first_profile = list(st.session_state["smtp_profiles"].values())[0]
@@ -99,13 +100,16 @@ with st.sidebar:
     selected_profile_name = st.selectbox(
         "Select Active SMTP Profile:", options=profile_names
     )
+
     selected_profile = st.session_state["smtp_profiles"][selected_profile_name]
 
     # Selected Profile ke values inputs mein pre-fill hongi
     s_email = st.text_input("Sender Email (From):", value=selected_profile["email"])
     s_user = st.text_input("SMTP Username:", value=selected_profile["user"])
     s_pass = st.text_input(
-        "App Password / API Key:", value=selected_profile["pass"], type="password"
+        "App Password / API Key:",
+        value=selected_profile["pass"],
+        type="password",
     )
     s_server = st.text_input("SMTP Server:", value=selected_profile["server"])
     s_port = st.number_input(
@@ -114,6 +118,7 @@ with st.sidebar:
     s_name = st.text_input("Sender Name:", value=selected_profile["name"])
 
     st.markdown("---")
+
     # Profile Save / Update Name
     profile_save_name = st.text_input(
         "Save As Profile Name:", value=selected_profile_name
@@ -123,7 +128,6 @@ with st.sidebar:
     with col1:
         if st.button("💾 Save Profile", type="primary", use_container_width=True):
             p_name = profile_save_name.strip() or "Custom Profile"
-
             # Update dictionary
             st.session_state["smtp_profiles"][p_name] = {
                 "email": s_email.strip(),
@@ -140,7 +144,6 @@ with st.sidebar:
             st.session_state["smtp_server"] = s_server.strip()
             st.session_state["smtp_port"] = s_port
             st.session_state["smtp_name"] = s_name.strip()
-
             st.success(f"✅ Profile '{p_name}' Saved!")
             st.rerun()
 
@@ -214,6 +217,7 @@ if uploaded_file is not None:
             st.success(f"✅ CSV Loaded! Total Records: {len(df)}")
             st.info(f"📌 **Selected Email Column:** `{email_col}`")
             st.dataframe(df.head(5), use_container_width=True)
+
     except Exception as e:
         st.error(f"Error reading CSV file: {e}")
 
@@ -222,16 +226,16 @@ st.divider()
 
 # --- STEP B: EMAIL CONTENT ---
 st.markdown("**2. Email Content**")
+
 with st.form(key="email_content_form"):
     subject_input = st.text_input("Email Subject:", value="Important Announcement")
-
     quill_res = st_quill(
         value=st.session_state["editor_text"],
         html=True,
         key="quill_editor_fixed",
     )
-
     save_draft = st.form_submit_button("💾 Save Template / Content")
+
     if save_draft and quill_res:
         st.session_state["editor_text"] = quill_res
         st.success("✅ Content Saved!")
@@ -278,6 +282,7 @@ if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
             if not recipient_email or "@" not in recipient_email:
                 logs.append(
                     {
+                        "Sender ID": sender_email,
                         "Email": recipient_email,
                         "Status": "Failed ❌",
                         "Reason": "Invalid Email",
@@ -309,6 +314,7 @@ if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
                 </body>
                 </html>
                 """
+
                 msg.attach(MIMEText(clean_formatted_html, "html"))
 
                 if int(smtp_port) == 465:
@@ -324,16 +330,17 @@ if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
                 success_count += 1
                 logs.append(
                     {
+                        "Sender ID": sender_email,
                         "Email": recipient_email,
                         "Status": "Sent ✅",
                         "Reason": "Success",
                     }
                 )
-
             except Exception as e:
                 failed_count += 1
                 logs.append(
                     {
+                        "Sender ID": sender_email,
                         "Email": recipient_email,
                         "Status": "Failed ❌",
                         "Reason": str(e),
@@ -356,10 +363,12 @@ if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
         safe_subject = re.sub(r"[^\w\s-]", "", subject_input).strip().replace(" ", "_")
         if not safe_subject:
             safe_subject = "Campaign_Report"
+
         today_date = time.strftime("%Y-%m-%d")
         download_filename = f"{safe_subject}_{today_date}.csv"
 
         csv_data = log_df.to_csv(index=False).encode("utf-8")
+
         st.download_button(
             label="📥 Download Campaign Report (CSV)",
             data=csv_data,
