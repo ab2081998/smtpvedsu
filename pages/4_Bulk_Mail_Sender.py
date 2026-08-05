@@ -45,7 +45,7 @@ try:
 
 except ImportError:
     if not st.session_state["authenticated"]:
-        st.warning("🔒 Access Restricted! Please enter root password.")
+        st.warning("🔒 Access Restricted! Please enter password.")
         user_pass = st.text_input(
             "Please enter Password",
             type="password",
