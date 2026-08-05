@@ -63,24 +63,22 @@ st.subheader("⚡ Quick Navigation")
 
 nav_col1, nav_col2, nav_col3, nav_col4 = st.columns(4)
 
-with nav_col1:
+with nav_col3:
     st.page_link(
-        "pages/2_Important_Mails.py",
-        label="⭐ Important Mails Reader",
+        "pages/5_Single_Column_Mail_Sender.py",
+        label="📋 Single Column Mailer",
         use_container_width=True,
     )
-
 with nav_col2:
     st.page_link(
         "pages/4_Bulk_Mail_Sender.py",
         label="📨 Bulk Mail Sender",
         use_container_width=True,
     )
-
-with nav_col3:
+with nav_col1:
     st.page_link(
-        "pages/5_Single_Column_Mail_Sender.py",
-        label="📋 Single Column Mailer",
+        "pages/2_Important_Mails.py",
+        label="⭐ Important Mails Reader",
         use_container_width=True,
     )
 
