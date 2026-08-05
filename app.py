@@ -61,7 +61,7 @@ csv_data = sample_df.to_csv(index=False).encode("utf-8")
 # --- TOP SECTION: ⚡ QUICK NAVIGATION & CSV BUTTON ---
 st.subheader("⚡ Quick Navigation")
 
-nav_col1, nav_col2, nav_col3, nav_col4 = st.columns(4)
+nav_col3, nav_col2, nav_col1, nav_col4 = st.columns(4)
 
 with nav_col3:
     st.page_link(
