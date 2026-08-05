@@ -20,7 +20,7 @@ col_title, col_logout = st.columns([4, 1])
 with col_title:
     st.title("🎯 Smart CRM & Bulk Outreach Suite")
 with col_logout:
-    st.write("")  # Vertical alignment spacing
+    st.write("")  # Alignment spacing
     if st.button("🚪 Logout App", use_container_width=True):
         st.session_state["authenticated"] = False
         if "session_auth" in st.query_params:
@@ -30,67 +30,54 @@ with col_logout:
         st.rerun()
 
 st.markdown(
-    "Welcome to your **centralized CRM & Automation Hub**. Quick-launch your marketing and email extraction workflows below."
+    "Welcome to your **centralized CRM & Automation Hub**. Quick-launch your marketing workflows below."
 )
+st.divider()
+
+# --- WHY USE THIS CRM SUITE ---
+st.subheader("💡 Why Use This CRM Suite?")
+st.markdown(
+    """
+* 📬 **Automated Bulk Emailing:** Send personalized campaigns with simple CSV files.
+* 🎯 **Smart Personalization:** Auto-handles missing contact names with fallback greetings (*Hi there*).
+* 📊 **Live Campaign Tracking:** Real-time progress bars, success logs, and failure analytics.
+* 🔒 **Secure SMTP Credentials:** Safely store app credentials per session.
+"""
+)
+
 st.divider()
 
 # --- QUICK ACCESS / PAGES HYPERLINKS NAVIGATION ---
 st.subheader("⚡ Quick Navigation & Suite Tools")
-st.caption(
-    "Click on any tool below to open it directly or access them from the left sidebar."
-)
+st.caption("Click on any tool below to open it directly.")
 
-col1, col2 = st.columns(2)
+col1, col2, col3 = st.columns(3)
 
 with col1:
     with st.container(border=True):
-        st.markdown("### ⭐ Important Mails Reader")
-        st.write(
-            "Fetch and view important starred emails directly with HTML preview support."
-        )
+        st.markdown("#### ⭐ Important Mails")
+        st.caption("Fetch & view starred emails with HTML preview.")
         st.page_link(
             "pages/2_Important_Mails.py", label="Open Reader", icon="⭐"
         )
 
+with col2:
     with st.container(border=True):
-        st.markdown("### 📨 Bulk Mail Sender")
-        st.write(
-            "Send personalized email campaigns at scale using dynamic CSV list imports."
-        )
+        st.markdown("#### 📨 Bulk Mail Sender")
+        st.caption("Send email campaigns via CSV list import.")
         st.page_link(
             "pages/4_Bulk_Mail_Sender.py", label="Launch Bulk Sender", icon="📨"
         )
 
-with col2:
+with col3:
     with st.container(border=True):
-        st.markdown("### 📋 Single Column Mailer")
-        st.write(
-            "Simplified mail dispatcher for single-column contact lists without headers."
-        )
+        st.markdown("#### 📋 Single Column Mailer")
+        st.caption("Dispatch mails for single-column contact lists.")
         st.page_link(
             "pages/5_Single_Column_Mail_Sender.py",
-            label="Open Single Column Mailer",
+            label="Open Single Mailer",
             icon="📋",
         )
-
-    with st.container(border=True):
-        st.markdown("### 🔍 Email Extractor Tool")
-        st.write(
-            "Extract clean email addresses automatically from raw unorganized text blocks."
-        )
-        st.page_link(
-            "pages/6_Email_Extractor.py", label="Open Extractor", icon="🔍"
-        )
-
-st.divider()
-
-# --- CRM METRICS & SUITE SUMMARY ---
-st.subheader("📊 Outreach Metrics Overview")
-m1, m2, m3, m4 = st.columns(4)
-m1.metric(label="Active SMTP Engine", value="Ready", delta="100% Operational")
-m2.metric(label="Session Timeout", value="4 Hours", delta="Auto-renewed")
-m3.metric(label="Recipient Fallback", value="Enabled", delta="Hi there")
-m4.metric(label="Security Mode", value="Passcode Protected", delta="TOML Locked")
 
 st.divider()
 
