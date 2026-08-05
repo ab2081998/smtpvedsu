@@ -2,45 +2,59 @@ import hmac
 import time
 import streamlit as st
 
-SESSION_TIMEOUT_SECONDS = 4 * 3600  # 4 Hours
+# Session Timeout (4 Hours)
+SESSION_TIMEOUT_SECONDS = 4 * 3600
+
 
 def require_login():
-    """Call this function at the top of every page to enforce authentication."""
+    """Handles passcode authentication using secrets.toml & URL query parameters."""
     current_time = time.time()
     auth_param = st.query_params.get("session_auth", None)
     login_time_param = st.query_params.get("session_time", None)
 
-    # 1. Check Query Parameters for persistent session
+    # 1. Active Session Check
     if auth_param == "true" and login_time_param:
         try:
-            saved_time = float(login_time_param)
-            if current_time - saved_time < SESSION_TIMEOUT_SECONDS:
+            if current_time - float(login_time_param) < SESSION_TIMEOUT_SECONDS:
                 st.session_state["authenticated"] = True
-                st.session_state["login_time"] = saved_time
-            else:
-                st.query_params.clear()
-                st.session_state["authenticated"] = False
+                return True
         except ValueError:
-            st.query_params.clear()
+            pass
 
-    # 2. Check Session State
-    if st.session_state.get("authenticated", False):
-        if current_time - st.session_state.get("login_time", 0) < SESSION_TIMEOUT_SECONDS:
-            return True
+    # 2. Not Authenticated -> Hide Sidebar & Navigation Controls
+    if not st.session_state.get("authenticated", False):
+        st.markdown(
+            """
+            <style>
+                [data-testid="stSidebar"] {display: none !important;}
+                [data-testid="stSidebarNav"] {display: none !important;}
+                [data-testid="collapsedControl"] {display: none !important;}
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
 
-    # 3. If Not Authenticated, Show Login UI & Stop execution
-    st.title("🔒 Password Protected Page")
-    password_input = st.text_input("Enter Passcode to Access:", type="password")
+        st.markdown(
+            "<h2 style='text-align: center;'>🔒 CRM Portal Login</h2>",
+            unsafe_allow_html=True,
+        )
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            st.info("Enter master passcode to unlock CRM tools.")
+            entered_password = st.text_input(
+                "Enter Passcode:", type="password", key="main_passcode_input"
+            )
+            if st.button("Unlock Dashboard", type="primary", use_container_width=True):
+                # Fetch password from secrets.toml (Fallback: 'root')
+                correct_password = st.secrets.get("PASSWORD", "root")
 
-    if st.button("Login", type="primary"):
-        app_password = st.secrets.get("APP_PASSWORD", "")
-        if app_password and hmac.compare_digest(password_input, app_password):
-            st.session_state["authenticated"] = True
-            st.session_state["login_time"] = current_time
-            st.query_params["session_auth"] = "true"
-            st.query_params["session_time"] = str(current_time)
-            st.rerun()
-        else:
-            st.error("❌ Incorrect Passcode!")
-    
-    st.stop()  # Age ka code run hone se rok dega
+                if hmac.compare_digest(entered_password, correct_password):
+                    st.session_state["authenticated"] = True
+                    st.query_params["session_auth"] = "true"
+                    st.query_params["session_time"] = str(current_time)
+                    st.success("✅ Access Granted!")
+                    st.rerun()
+                else:
+                    st.error("❌ Incorrect Passcode! Please try again.")
+
+        st.stop()
