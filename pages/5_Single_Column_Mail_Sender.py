@@ -14,7 +14,6 @@ from streamlit_quill import st_quill
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if parent_dir not in sys.path:
     sys.path.append(parent_dir)
-
 import auth
 
 # Force Authentication Check via auth.py
@@ -23,15 +22,25 @@ if hasattr(auth, "require_auth"):
 elif hasattr(auth, "check_auth"):
     auth.check_auth()
 
-# Fallback session check if auth module uses session state
+# Fallback session check with password unlock input
 if not st.session_state.get("authenticated", False):
-    st.error("🔒 Access Denied! Please login first.")
+    st.subheader("🔒 Page Locked")
+    password_input = st.text_input("Enter password to unlock page:", type="password")
+    
+    # Secrets se password check karein ya default fallback set karein
+    correct_password = st.secrets.get("APP_PASSWORD", "admin123")
+    
+    if st.button("Unlock"):
+        if password_input == correct_password:
+            st.session_state["authenticated"] = True
+            st.success("Unlocked successfully!")
+            st.rerun()
+        else:
+            st.error("Incorrect password. Please try again.")
     st.stop()
-
 
 # --- 1. SECRETS SE MULTI-SMTP ACCOUNTS FETCH KARNA ---
 smtp_secrets = st.secrets.get("smtp_accounts", {})
-
 if "smtp_profiles" not in st.session_state:
     st.session_state["smtp_profiles"] = {}
 
@@ -89,7 +98,6 @@ DEFAULT_TEMPLATE = """<p>Hello {Name},</p>
 if "editor_text" not in st.session_state:
     st.session_state["editor_text"] = DEFAULT_TEMPLATE
 
-
 # --- 2. MULTI-SMTP SIDEBAR CONFIG ---
 with st.sidebar:
     st.divider()
@@ -100,7 +108,6 @@ with st.sidebar:
     selected_profile_name = st.selectbox(
         "Select Active SMTP Profile:", options=profile_names
     )
-
     selected_profile = st.session_state["smtp_profiles"][selected_profile_name]
 
     # Selected Profile ke values inputs mein pre-fill hongi
@@ -118,7 +125,6 @@ with st.sidebar:
     s_name = st.text_input("Sender Name:", value=selected_profile["name"])
 
     st.markdown("---")
-
     # Profile Save / Update Name
     profile_save_name = st.text_input(
         "Save As Profile Name:", value=selected_profile_name
@@ -164,7 +170,6 @@ with st.sidebar:
         st.success("👋 Logged out!")
         st.rerun()
 
-
 # --- 3. MAIN UI ---
 st.markdown("**📢 Single Column Mail Sender (Email Only)**")
 st.caption("Send emails directly using a CSV containing only Email addresses.")
@@ -186,7 +191,6 @@ if st.session_state["smtp_email"]:
 else:
     st.warning("⚠️ Pehle Sidebar me SMTP Details save karein ya secrets.toml setup karein!")
     st.stop()
-
 
 # --- STEP A: CSV UPLOAD ---
 st.markdown("**1. Upload CSV File**")
@@ -213,20 +217,16 @@ if uploaded_file is not None:
                 if col.lower() == "email":
                     email_col = col
                     break
-
             st.success(f"✅ CSV Loaded! Total Records: {len(df)}")
             st.info(f"📌 **Selected Email Column:** `{email_col}`")
             st.dataframe(df.head(5), use_container_width=True)
-
     except Exception as e:
         st.error(f"Error reading CSV file: {e}")
 
 st.divider()
 
-
 # --- STEP B: EMAIL CONTENT ---
 st.markdown("**2. Email Content**")
-
 with st.form(key="email_content_form"):
     subject_input = st.text_input("Email Subject:", value="Important Announcement")
     quill_res = st_quill(
@@ -244,7 +244,6 @@ if quill_res and quill_res != st.session_state["editor_text"]:
     st.session_state["editor_text"] = quill_res
 
 st.divider()
-
 
 # --- STEP C: BULK SENDING LOGIC ---
 st.markdown("**3. Start Bulk Campaign**")
@@ -336,6 +335,7 @@ if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
                         "Reason": "Success",
                     }
                 )
+
             except Exception as e:
                 failed_count += 1
                 logs.append(
@@ -368,7 +368,6 @@ if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
         download_filename = f"{safe_subject}_{today_date}.csv"
 
         csv_data = log_df.to_csv(index=False).encode("utf-8")
-
         st.download_button(
             label="📥 Download Campaign Report (CSV)",
             data=csv_data,
