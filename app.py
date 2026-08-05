@@ -4,12 +4,12 @@ import time
 import pandas as pd
 import streamlit as st
 
-# --- PAGE CONFIGURATION (Navigation Bar Closed By Default) ---
+# --- PAGE CONFIGURATION ---
 st.set_page_config(
     page_title="CRM & Mail Portal",
     page_icon="🚀",
     layout="wide",
-    initial_sidebar_state="collapsed",  # Navigation bar closed by default
+    initial_sidebar_state="collapsed",
 )
 
 # --- PERSISTENT SESSION TIMEOUT (4-HOURS) ---
@@ -31,6 +31,18 @@ def check_password():
             pass
 
     if not st.session_state.get("authenticated", False):
+        # 🔒 Login se pehle Sidebar aur Navigation Button ko hide karne ki CSS
+        st.markdown(
+            """
+            <style>
+                [data-testid="stSidebar"] {display: none;}
+                [data-testid="stSidebarNav"] {display: none;}
+                [data-testid="collapsedControl"] {display: none;}
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+
         st.markdown(
             "<h2 style='text-align: center;'>🔒 CRM Portal Login</h2>",
             unsafe_allow_html=True,
@@ -61,10 +73,8 @@ if not check_password():
 
 # --- MAIN CRM HOME DASHBOARD & HEADER ---
 col_title, col_logout = st.columns([4, 1])
-
 with col_title:
     st.title("🎯 Smart CRM & Bulk Outreach Suite")
-
 with col_logout:
     st.write("")  # Margin adjustment
     if st.button("🚪 Logout App", use_container_width=True):
