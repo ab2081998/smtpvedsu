@@ -1,3 +1,4 @@
+from datetime import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import formataddr
@@ -27,7 +28,7 @@ elif hasattr(auth, "check_auth"):
 if not st.session_state.get("authenticated", False):
     st.subheader("🔒 Page Locked")
     password_input = st.text_input("Enter password to unlock page:", type="password")
-    
+
     # Secrets se password check karein ya default fallback set karein
     correct_password = st.secrets.get("APP_PASSWORD", "admin123")
     if st.button("Unlock"):
@@ -115,12 +116,12 @@ with st.sidebar:
         "Save As Profile Name:", value=selected_profile_name
     )
 
-    # Top Buttons Container Create karein (UI me sabse upar buttons dikhane ke liye)
+    # Top Buttons Container (UI mein sabse upar dikhane ke liye)
     button_container = st.container()
 
     st.markdown("---")
 
-    # Input Fields (Pehele render aur evaluate honge)
+    # Input Fields (Pehle render/evaluate honge)
     s_email = st.text_input("Sender Email (From):", value=selected_profile["email"])
     s_user = st.text_input("SMTP Username:", value=selected_profile["user"])
     s_pass = st.text_input(
@@ -134,7 +135,7 @@ with st.sidebar:
     )
     s_name = st.text_input("Sender Name:", value=selected_profile["name"])
 
-    # Now populate Top Button Container with Save and Reset buttons
+    # Top Container mein Save aur Reset Buttons render karein
     with button_container:
         col1, col2 = st.columns(2)
         with col1:
@@ -259,12 +260,13 @@ if quill_res and quill_res != st.session_state["editor_text"]:
 
 st.divider()
 
-# --- STEP C: BULK SENDING LOGIC ---
+# --- STEP C: BULK SENDING LOGIC WITH AUTO-HISTORY ---
 st.markdown("**3. Start Bulk Campaign**")
 
 notification_box = st.container()
 
 FALLBACK_NAME = "there"
+HISTORY_FILE = "email_history.csv"
 
 if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
     if df is None or len(df) == 0:
@@ -292,17 +294,27 @@ if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
             recipient_email = (
                 str(row[email_col]).strip() if pd.notna(row[email_col]) else ""
             )
+            now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
             if not recipient_email or "@" not in recipient_email:
-                logs.append(
-                    {
-                        "Sender ID": sender_email,
-                        "Email": recipient_email,
-                        "Status": "Failed ❌",
-                        "Reason": "Invalid Email",
-                    }
-                )
                 failed_count += 1
+                log_data = {
+                    "Timestamp": now_str,
+                    "Sender": sender_email,
+                    "Recipient": recipient_email,
+                    "Subject": subject_input,
+                    "Status": "Failed ❌",
+                    "Reason": "Invalid Email",
+                }
+                logs.append(log_data)
+
+                # Master History file mein append karein
+                pd.DataFrame([log_data]).to_csv(
+                    HISTORY_FILE,
+                    mode="a",
+                    header=not os.path.exists(HISTORY_FILE),
+                    index=False,
+                )
                 continue
 
             custom_subject = subject_input.replace("{Name}", FALLBACK_NAME)
@@ -342,24 +354,35 @@ if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
                         server.sendmail(sender_email, recipient_email, msg.as_string())
 
                 success_count += 1
-                logs.append(
-                    {
-                        "Sender ID": sender_email,
-                        "Email": recipient_email,
-                        "Status": "Sent ✅",
-                        "Reason": "Success",
-                    }
-                )
+                log_data = {
+                    "Timestamp": now_str,
+                    "Sender": sender_email,
+                    "Recipient": recipient_email,
+                    "Subject": custom_subject,
+                    "Status": "Sent ✅",
+                    "Reason": "Success",
+                }
+                logs.append(log_data)
+
             except Exception as e:
                 failed_count += 1
-                logs.append(
-                    {
-                        "Sender ID": sender_email,
-                        "Email": recipient_email,
-                        "Status": "Failed ❌",
-                        "Reason": str(e),
-                    }
-                )
+                log_data = {
+                    "Timestamp": now_str,
+                    "Sender": sender_email,
+                    "Recipient": recipient_email,
+                    "Subject": custom_subject,
+                    "Status": "Failed ❌",
+                    "Reason": str(e),
+                }
+                logs.append(log_data)
+
+            # Master History file mein automatic append karne ka logic
+            pd.DataFrame([log_data]).to_csv(
+                HISTORY_FILE,
+                mode="a",
+                header=not os.path.exists(HISTORY_FILE),
+                index=False,
+            )
 
             current_progress = (index + 1) / total_records
             progress_bar.progress(current_progress)
