@@ -14,6 +14,7 @@ from streamlit_quill import st_quill
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if parent_dir not in sys.path:
     sys.path.append(parent_dir)
+
 import auth
 
 # Force Authentication Check via auth.py
@@ -29,7 +30,6 @@ if not st.session_state.get("authenticated", False):
     
     # Secrets se password check karein ya default fallback set karein
     correct_password = st.secrets.get("APP_PASSWORD", "admin123")
-    
     if st.button("Unlock"):
         if password_input == correct_password:
             st.session_state["authenticated"] = True
@@ -37,10 +37,11 @@ if not st.session_state.get("authenticated", False):
             st.rerun()
         else:
             st.error("Incorrect password. Please try again.")
-    st.stop()
+            st.stop()
 
 # --- 1. SECRETS SE MULTI-SMTP ACCOUNTS FETCH KARNA ---
 smtp_secrets = st.secrets.get("smtp_accounts", {})
+
 if "smtp_profiles" not in st.session_state:
     st.session_state["smtp_profiles"] = {}
 
@@ -77,7 +78,6 @@ if not st.session_state["smtp_profiles"]:
 
 # Initial Session Credentials set karein
 first_profile = list(st.session_state["smtp_profiles"].values())[0]
-
 if "smtp_email" not in st.session_state:
     st.session_state["smtp_email"] = first_profile["email"]
 if "smtp_user" not in st.session_state:
@@ -110,6 +110,11 @@ with st.sidebar:
     )
     selected_profile = st.session_state["smtp_profiles"][selected_profile_name]
 
+    # --- Profile Save / Update Name ko Top Par Shifting ---
+    profile_save_name = st.text_input(
+        "Save As Profile Name:", value=selected_profile_name
+    )
+
     # Selected Profile ke values inputs mein pre-fill hongi
     s_email = st.text_input("Sender Email (From):", value=selected_profile["email"])
     s_user = st.text_input("SMTP Username:", value=selected_profile["user"])
@@ -125,15 +130,12 @@ with st.sidebar:
     s_name = st.text_input("Sender Name:", value=selected_profile["name"])
 
     st.markdown("---")
-    # Profile Save / Update Name
-    profile_save_name = st.text_input(
-        "Save As Profile Name:", value=selected_profile_name
-    )
 
     col1, col2 = st.columns(2)
     with col1:
         if st.button("💾 Save Profile", type="primary", use_container_width=True):
             p_name = profile_save_name.strip() or "Custom Profile"
+
             # Update dictionary
             st.session_state["smtp_profiles"][p_name] = {
                 "email": s_email.strip(),
@@ -143,6 +145,7 @@ with st.sidebar:
                 "port": s_port,
                 "name": s_name.strip(),
             }
+
             # Update active session
             st.session_state["smtp_email"] = s_email.strip()
             st.session_state["smtp_user"] = s_user.strip()
@@ -150,6 +153,7 @@ with st.sidebar:
             st.session_state["smtp_server"] = s_server.strip()
             st.session_state["smtp_port"] = s_port
             st.session_state["smtp_name"] = s_name.strip()
+
             st.success(f"✅ Profile '{p_name}' Saved!")
             st.rerun()
 
@@ -161,6 +165,7 @@ with st.sidebar:
             st.session_state["smtp_server"] = selected_profile["server"]
             st.session_state["smtp_port"] = selected_profile["port"]
             st.session_state["smtp_name"] = selected_profile["name"]
+
             st.info("🔄 Restored Selected Profile Defaults!")
             st.rerun()
 
@@ -217,6 +222,7 @@ if uploaded_file is not None:
                 if col.lower() == "email":
                     email_col = col
                     break
+
             st.success(f"✅ CSV Loaded! Total Records: {len(df)}")
             st.info(f"📌 **Selected Email Column:** `{email_col}`")
             st.dataframe(df.head(5), use_container_width=True)
@@ -227,13 +233,16 @@ st.divider()
 
 # --- STEP B: EMAIL CONTENT ---
 st.markdown("**2. Email Content**")
+
 with st.form(key="email_content_form"):
     subject_input = st.text_input("Email Subject:", value="Important Announcement")
+
     quill_res = st_quill(
         value=st.session_state["editor_text"],
         html=True,
         key="quill_editor_fixed",
     )
+
     save_draft = st.form_submit_button("💾 Save Template / Content")
 
     if save_draft and quill_res:
@@ -247,6 +256,7 @@ st.divider()
 
 # --- STEP C: BULK SENDING LOGIC ---
 st.markdown("**3. Start Bulk Campaign**")
+
 notification_box = st.container()
 
 FALLBACK_NAME = "there"
@@ -335,7 +345,6 @@ if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
                         "Reason": "Success",
                     }
                 )
-
             except Exception as e:
                 failed_count += 1
                 logs.append(
