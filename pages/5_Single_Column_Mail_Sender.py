@@ -110,12 +110,28 @@ with st.sidebar:
     )
     selected_profile = st.session_state["smtp_profiles"][selected_profile_name]
 
-    # --- Profile Save Name (Top Position) ---
+    # 1. Profile Save As Name Input (⚙️ SMTP Configurations ke niche)
     profile_save_name = st.text_input(
         "Save As Profile Name:", value=selected_profile_name
     )
 
-    # --- Save Profile & Reset Profile Buttons (Top Position) ---
+    # 2. Input Fields PEHLE define honge taaki Save Button variables ko read kar sake
+    s_email = st.text_input("Sender Email (From):", value=selected_profile["email"])
+    s_user = st.text_input("SMTP Username:", value=selected_profile["user"])
+    s_pass = st.text_input(
+        "App Password / API Key:",
+        value=selected_profile["pass"],
+        type="password",
+    )
+    s_server = st.text_input("SMTP Server:", value=selected_profile["server"])
+    s_port = st.number_input(
+        "SMTP Port:", value=int(selected_profile["port"]), step=1
+    )
+    s_name = st.text_input("Sender Name:", value=selected_profile["name"])
+
+    st.markdown("---")
+
+    # 3. Save & Reset Buttons (Input fields ke niche takki variables defined ho)
     col1, col2 = st.columns(2)
     with col1:
         if st.button("💾 Save Profile", type="primary", use_container_width=True):
@@ -153,22 +169,6 @@ with st.sidebar:
 
             st.info("🔄 Restored Selected Profile Defaults!")
             st.rerun()
-
-    st.markdown("---")
-
-    # Selected Profile ke values inputs mein pre-fill hongi
-    s_email = st.text_input("Sender Email (From):", value=selected_profile["email"])
-    s_user = st.text_input("SMTP Username:", value=selected_profile["user"])
-    s_pass = st.text_input(
-        "App Password / API Key:",
-        value=selected_profile["pass"],
-        type="password",
-    )
-    s_server = st.text_input("SMTP Server:", value=selected_profile["server"])
-    s_port = st.number_input(
-        "SMTP Port:", value=int(selected_profile["port"]), step=1
-    )
-    s_name = st.text_input("Sender Name:", value=selected_profile["name"])
 
     st.divider()
     if st.button("🚪 Logout App"):
