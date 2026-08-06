@@ -1,5 +1,6 @@
 import os
 import sys
+from datetime import datetime
 import pandas as pd
 import streamlit as st
 
@@ -118,10 +119,15 @@ if os.path.exists(HISTORY_FILE):
 
             with col_down:
                 csv_data = display_df.to_csv(index=False).encode("utf-8")
+                
+                # File name me dynamic Date aur Time mention karne ka logic
+                current_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                dynamic_filename = f"email_history_{current_timestamp}.csv"
+
                 st.download_button(
                     label="📥 Download CSV History",
                     data=csv_data,
-                    file_name="email_history.csv",
+                    file_name=dynamic_filename,
                     mime="text/csv",
                     type="primary",
                     use_container_width=True,
