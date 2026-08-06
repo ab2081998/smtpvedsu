@@ -93,7 +93,9 @@ if "smtp_name" not in st.session_state:
 
 DEFAULT_TEMPLATE = """<p>Hi {Name},</p>
 <p>I hope this email finds you well.</p>
-<p>Write your message here...</p>"""
+<p>Write your message here...</p>
+<br>
+<p data-path-to-node="12">WebinarBrite<br>2438 Industrial Blvd #1003, Abilene, TX 79605, United States<br>Need assistance? <a href="mailto:cs@webinarbrite.com ">cs@webinarbrite.com&nbsp;</a><br>If you do not wish to receive future webinar invites, please <a href="https://webinarbrite.com/unsubscribe">Unsubscribe Here</a></p>"""
 
 if "editor_text" not in st.session_state:
     st.session_state["editor_text"] = DEFAULT_TEMPLATE
