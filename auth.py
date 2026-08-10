@@ -28,34 +28,35 @@ def require_login():
             [data-testid="stSidebar"] {display: none !important;}
             [data-testid="stSidebarNav"] {display: none !important;}
             [data-testid="collapsedControl"] {display: none !important;}
+            /* Reduce top padding for single screen fit */
+            .block-container {
+                padding-top: 2rem !important;
+                padding-bottom: 1rem !important;
+            }
             </style>
             """,
             unsafe_allow_html=True,
         )
 
-        # --- 1. TOP MESSAGE ---
-        st.title("🎯 Smart CRM & Bulk Outreach Suite")
-        st.markdown(
-            "Welcome to your **centralized CRM & Automation Hub**. Quick-launch your marketing workflows below."
-        )
+        # --- COMPACT 2-COLUMN LAYOUT FOR SINGLE SCREEN FIT ---
+        col_left, col_right = st.columns([1.1, 0.9], gap="large")
 
-        st.divider()
-
-        # --- 2. LOGIN FORM (IN MIDDLE) WITH BOLD HEADING ---
-        st.markdown(
-            "<p style='text-align: center;'><b>🔒 CRM Portal Login</b></p>",
-            unsafe_allow_html=True,
-        )
-
-        col1, col2, col3 = st.columns([1, 2, 1])
-
-        with col2:
-            st.info("Enter master passcode to unlock CRM tools.")
-            entered_password = st.text_input(
-                "Enter Passcode:", type="password", key="main_passcode_input"
+        with col_left:
+            st.title("🎯 Smart CRM Suite")
+            st.markdown(
+                "Welcome to your **centralized CRM & Automation Hub**. Quick-launch your marketing workflows below."
+            )
+            
+            st.markdown(
+                "<p style='font-size: 1.1rem; margin-top: 15px;'><b>🔒 CRM Portal Login</b></p>",
+                unsafe_allow_html=True,
             )
 
-            if st.button("Unlock Dashboard", type="primary", use_container_width=True):
+            entered_password = st.text_input(
+                "Enter Passcode:", type="password", key="main_passcode_input", placeholder="••••••••"
+            )
+
+            if st.button("Unlock Dashboard 🚀", type="primary", use_container_width=True):
                 # Fetch password from secrets.toml (Fallback: 'root')
                 correct_password = st.secrets.get("PASSWORD", "root")
 
@@ -68,17 +69,16 @@ def require_login():
                 else:
                     st.error("❌ Incorrect Passcode! Please try again.")
 
-        st.divider()
-
-        # --- 3. REST OF THE MESSAGE (AT BOTTOM) ---
-        st.markdown(
-            """
-### 💡 Why Use This CRM Suite?
+        with col_right:
+            with st.container(border=True):
+                st.markdown("### 💡 Why Use This CRM Suite?")
+                st.markdown(
+                    """
 * 📬 **Automated Bulk Emailing:** Send personalized campaigns with simple CSV files.
 * 🎯 **Smart Personalization:** Auto-handles missing contact names with fallback greetings (*Hi there*).
 * 📊 **Live Campaign Tracking:** Real-time progress bars, success logs, and failure analytics.
 * 🔒 **Secure SMTP Credentials:** Safely store app credentials per session.
-"""
-        )
+                    """
+                )
 
         st.stop()
