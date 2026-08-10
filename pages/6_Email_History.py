@@ -16,7 +16,7 @@ if hasattr(auth, "require_auth"):
 elif hasattr(auth, "check_auth"):
     auth.check_auth()
 
-# Fallback password unlock form (Refreshing par page lock na ho baki pages ki tarah)
+# Fallback password unlock form
 if not st.session_state.get("authenticated", False):
     st.subheader("🔒 Page Locked")
     password_input = st.text_input("Enter password to unlock page:", type="password")
@@ -32,17 +32,65 @@ if not st.session_state.get("authenticated", False):
     else:
         st.stop()
 
+# --- CUSTOM CSS FOR MODERN DASHBOARD UI ---
+st.markdown("""
+<style>
+    /* Metric Cards Styling */
+    div[data-testid="stMetric"] {
+        background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
+        border: 1px solid #374151;
+        border-radius: 12px;
+        padding: 16px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        transition: transform 0.2s ease, border-color 0.2s ease;
+    }
+    div[data-testid="stMetric"]:hover {
+        transform: translateY(-2px);
+        border-color: #4b5563;
+    }
+    div[data-testid="stMetricLabel"] {
+        font-size: 0.875rem !important;
+        font-weight: 600 !important;
+        color: #9ca3af !important;
+    }
+    div[data-testid="stMetricValue"] {
+        font-size: 1.75rem !important;
+        font-weight: 700 !important;
+        color: #f3f4f6 !important;
+    }
+
+    /* Info Alert Cards */
+    div[data-testid="stAlert"] {
+        border-radius: 10px !important;
+        border: 1px solid #1e3a8a !important;
+        background-color: #0f172a !important;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+
+    /* Primary Buttons Styling */
+    button[kind="primary"] {
+        border-radius: 8px !important;
+        font-weight: 600 !important;
+        letter-spacing: 0.3px !important;
+        transition: all 0.2s ease-in-out !important;
+    }
+
+    /* Secondary Action Buttons */
+    div.stButton > button {
+        border-radius: 8px !important;
+        transition: all 0.2s ease !important;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 # --- PAGE CONFIG & TITLE ---
 st.title("📊 Email Logs & History Dashboard")
-st.caption(
-    "Yahan aap bheje gaye sabhi emails ka Date, Time, Subject, Recipient, aur Status dekh sakte hain."
-)
+st.caption("Yahan aap bheje gaye sabhi emails ka Date, Time, Subject, Recipient, aur Status dekh sakte hain.")
 
 HISTORY_FILE = "email_history.csv"
 
 if os.path.exists(HISTORY_FILE):
     try:
-        # Special characters ko exact format me load karne ke liye utf-8 encoding
         df = pd.read_csv(HISTORY_FILE, dtype=str)
 
         if df.empty:
@@ -50,9 +98,7 @@ if os.path.exists(HISTORY_FILE):
         else:
             # --- RECENT ON TOP (Z to A / NEWEST FIRST SORTING) ---
             if "Timestamp" in df.columns:
-                df["Timestamp_dt"] = pd.to_datetime(
-                    df["Timestamp"], errors="coerce"
-                )
+                df["Timestamp_dt"] = pd.to_datetime(df["Timestamp"], errors="coerce")
                 df = df.sort_values(by="Timestamp_dt", ascending=False)
             else:
                 df = df.iloc[::-1]
@@ -60,26 +106,8 @@ if os.path.exists(HISTORY_FILE):
             # Stats Summary
             col1, col2, col3 = st.columns(3)
             col1.metric("Total Executions", len(df))
-            col2.metric(
-                "Successfully Sent",
-                len(
-                    df[
-                        df["Status"]
-                        .astype(str)
-                        .str.contains("Sent", na=False)
-                    ]
-                ),
-            )
-            col3.metric(
-                "Failed Mails",
-                len(
-                    df[
-                        df["Status"]
-                        .astype(str)
-                        .str.contains("Failed", na=False)
-                    ]
-                ),
-            )
+            col2.metric("Successfully Sent", len(df[df["Status"].astype(str).str.contains("Sent", na=False)]))
+            col3.metric("Failed Mails", len(df[df["Status"].astype(str).str.contains("Failed", na=False)]))
 
             st.divider()
 
@@ -87,32 +115,16 @@ if os.path.exists(HISTORY_FILE):
             st.markdown("### 📋 Campaign Wise Summary Notes")
 
             if "Timestamp_dt" not in df.columns:
-                df["Timestamp_dt"] = pd.to_datetime(
-                    df["Timestamp"], errors="coerce"
-                )
+                df["Timestamp_dt"] = pd.to_datetime(df["Timestamp"], errors="coerce")
             df["Date_Only"] = df["Timestamp_dt"].dt.strftime("%Y-%m-%d")
 
             summary_records = []
-
-            # Subject aur Date wise Grouping (sort=False Newest-First Order Preserve Rakhta Hai)
             grouped = df.groupby(["Subject", "Date_Only"], sort=False)
 
             for (subject_title, date_val), group in grouped:
                 total_cnt = len(group)
-                sent_cnt = len(
-                    group[
-                        group["Status"]
-                        .astype(str)
-                        .str.contains("Sent", na=False)
-                    ]
-                )
-                failed_cnt = len(
-                    group[
-                        group["Status"]
-                        .astype(str)
-                        .str.contains("Failed", na=False)
-                    ]
-                )
+                sent_cnt = len(group[group["Status"].astype(str).str.contains("Sent", na=False)])
+                failed_cnt = len(group[group["Status"].astype(str).str.contains("Failed", na=False)])
 
                 start_t = group["Timestamp_dt"].min()
                 end_t = group["Timestamp_dt"].max()
@@ -121,9 +133,7 @@ if os.path.exists(HISTORY_FILE):
                     duration_sec = (end_t - start_t).total_seconds()
                     mins = int(duration_sec // 60)
                     secs = int(duration_sec % 60)
-                    time_duration = (
-                        f"{mins}m {secs}s" if mins > 0 else f"{secs}s"
-                    )
+                    time_duration = f"{mins}m {secs}s" if mins > 0 else f"{secs}s"
                     time_range = f"{start_t.strftime('%I:%M %p')} - {end_t.strftime('%I:%M %p')}"
                 else:
                     time_duration = "N/A"
@@ -136,7 +146,7 @@ if os.path.exists(HISTORY_FILE):
                     "Sent ✅": sent_cnt,
                     "Failed ❌": failed_cnt,
                     "Time Interval": time_range,
-                    "Duration": time_duration,
+                    "Duration": time_duration
                 })
 
             summary_df = pd.DataFrame(summary_records)
@@ -145,9 +155,7 @@ if os.path.exists(HISTORY_FILE):
             # Individual Clean Notes Cards
             st.markdown("**📌 Campaign Detail Cards**")
             for _, item in summary_df.iterrows():
-                clean_title = (
-                    item["Subject Title"].replace("*", "\\*").replace("_", "\\_")
-                )
+                clean_title = item["Subject Title"].replace("*", "\\*").replace("_", "\\_")
                 st.info(
                     f"📅 **Date:** `{item['Date']}` | ✉️ **Subject:** **{clean_title}**\n\n"
                     f"👉 **Total Contacts:** {item['Total Contacts']} ({item['Sent ✅']} Sent, {item['Failed ❌']} Failed) "
@@ -162,23 +170,14 @@ if os.path.exists(HISTORY_FILE):
 
             if search_query:
                 filtered_df = df[
-                    df["Recipient"]
-                    .astype(str)
-                    .str.contains(search_query, case=False, na=False)
-                    | df["Subject"]
-                    .astype(str)
-                    .str.contains(search_query, case=False, na=False)
-                    | df["Timestamp"]
-                    .astype(str)
-                    .str.contains(search_query, case=False, na=False)
+                    df["Recipient"].astype(str).str.contains(search_query, case=False, na=False) |
+                    df["Subject"].astype(str).str.contains(search_query, case=False, na=False) |
+                    df["Timestamp"].astype(str).str.contains(search_query, case=False, na=False)
                 ]
             else:
                 filtered_df = df
 
-            # Temporary datetime helper columns drop karke Table me display karein
-            display_df = filtered_df.drop(
-                columns=["Timestamp_dt", "Date_Only"], errors="ignore"
-            )
+            display_df = filtered_df.drop(columns=["Timestamp_dt", "Date_Only"], errors="ignore")
             st.dataframe(display_df, use_container_width=True)
 
             col_down, col_clear = st.columns([3, 1])
@@ -204,6 +203,4 @@ if os.path.exists(HISTORY_FILE):
     except Exception as e:
         st.error(f"Error reading history file: {e}")
 else:
-    st.info(
-        "ℹ️ Abhi tak koi Email History record nahi hui hai. Mail bhejne ke baad data yahan dikhega."
-    )
+    st.info("ℹ️ Abhi tak koi Email History record nahi hui hai. Mail bhejne ke baad data yahan dikhega.")
