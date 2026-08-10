@@ -29,15 +29,12 @@ def require_login():
             [data-testid="stSidebarNav"] {display: none !important;}
             [data-testid="collapsedControl"] {display: none !important;}
             
-            /* Center Align Container Content */
+            /* Center Align Container Content & Adjust Width */
             .main .block-container {
-                max-width: 800px;
+                max-width: 950px;
                 padding-top: 2rem !important;
                 padding-bottom: 2rem !important;
                 margin: auto;
-            }
-            .centered-text {
-                text-align: center;
             }
             </style>
             """,
@@ -58,17 +55,17 @@ def require_login():
 
         st.divider()
 
-        # --- 2. LOGIN CARD (CENTERED) ---
-        st.markdown(
-            "<h3 style='text-align: center;'><b>🔒 CRM Portal Login</b></h3>",
-            unsafe_allow_html=True,
-        )
+        # --- 2. SIDE-BY-SIDE LAYOUT (LOGIN LEFT, MSG RIGHT) ---
+        col_login, col_msg = st.columns([1, 1], gap="large")
 
-        # Center Column for Login Inputs
-        col1, col2, col3 = st.columns([1, 2, 1])
-
-        with col2:
+        # --- LEFT SIDE: LOGIN CARD ---
+        with col_login:
+            st.markdown(
+                "<h3 style='text-align: center;'><b>🔒 CRM Portal Login</b></h3>",
+                unsafe_allow_html=True,
+            )
             st.info("Enter master passcode to unlock CRM tools.", icon="🔑")
+            
             entered_password = st.text_input(
                 "Enter Passcode:", type="password", key="main_passcode_input", placeholder="••••••••"
             )
@@ -86,28 +83,17 @@ def require_login():
                 else:
                     st.error("❌ Incorrect Passcode! Please try again.")
 
-        st.divider()
-
-        # --- 3. FEATURES LIST (CENTERED BOX) ---
-        st.markdown(
-            """
-            <div style='text-align: center;'>
-                <h3>💡 Why Use This CRM Suite?</h3>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        # Centered Box for Bullets
-        f_col1, f_col2, f_col3 = st.columns([0.15, 0.7, 0.15])
-        with f_col2:
-            st.markdown(
-                """
+        # --- RIGHT SIDE: WHY USE THIS CRM SUITE ---
+        with col_msg:
+            with st.container(border=True):
+                st.markdown("### 💡 Why Use This CRM Suite?")
+                st.markdown(
+                    """
 * 📬 **Automated Bulk Emailing:** Send personalized campaigns with simple CSV files.
 * 🎯 **Smart Personalization:** Auto-handles missing contact names with fallback greetings (*Hi there*).
 * 📊 **Live Campaign Tracking:** Real-time progress bars, success logs, and failure analytics.
 * 🔒 **Secure SMTP Credentials:** Safely store app credentials per session.
-                """
-            )
+"""
+                )
 
         st.stop()
