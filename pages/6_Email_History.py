@@ -1,6 +1,6 @@
+from datetime import datetime
 import os
 import sys
-from datetime import datetime
 import pandas as pd
 import streamlit as st
 
@@ -22,7 +22,9 @@ if not st.session_state.get("authenticated", False):
 
 # --- PAGE CONFIG & TITLE ---
 st.title("📊 Email Logs & History Dashboard")
-st.caption("Yahan aap bheje gaye sabhi emails ka Date, Time, Subject, Recipient, aur Status dekh sakte hain.")
+st.caption(
+    "Yahan aap bheje gaye sabhi emails ka Date, Time, Subject, Recipient, aur Status dekh sakte hain."
+)
 
 HISTORY_FILE = "email_history.csv"
 
@@ -34,39 +36,85 @@ if os.path.exists(HISTORY_FILE):
         if df.empty:
             st.info("ℹ️ History file abhi khali hai.")
         else:
+            # --- 🆕 RECENT ON TOP (Z to A / NEWEST FIRST SORTING) ---
+            if "Timestamp" in df.columns:
+                # Helper column for proper datetime sorting
+                df["Timestamp_dt"] = pd.to_datetime(
+                    df["Timestamp"], errors="coerce"
+                )
+                df = df.sort_values(by="Timestamp_dt", ascending=False)
+            else:
+                # Fallback: simple reverse order
+                df = df.iloc[::-1]
+
             # Stats Summary
             col1, col2, col3 = st.columns(3)
             col1.metric("Total Executions", len(df))
-            col2.metric("Successfully Sent", len(df[df["Status"].astype(str).str.contains("Sent", na=False)]))
-            col3.metric("Failed Mails", len(df[df["Status"].astype(str).str.contains("Failed", na=False)]))
+            col2.metric(
+                "Successfully Sent",
+                len(
+                    df[
+                        df["Status"]
+                        .astype(str)
+                        .str.contains("Sent", na=False)
+                    ]
+                ),
+            )
+            col3.metric(
+                "Failed Mails",
+                len(
+                    df[
+                        df["Status"]
+                        .astype(str)
+                        .str.contains("Failed", na=False)
+                    ]
+                ),
+            )
 
             st.divider()
 
             # --- CAMPAIGN WISE ANALYTICS / NOTES ---
             st.markdown("### 📋 Campaign Wise Summary Notes")
-            
-            # Datetime conversion for duration calculation
-            df['Timestamp_dt'] = pd.to_datetime(df['Timestamp'], errors='coerce')
-            df['Date_Only'] = df['Timestamp_dt'].dt.strftime('%Y-%m-%d')
+
+            # Date_Only extract karein
+            if "Timestamp_dt" not in df.columns:
+                df["Timestamp_dt"] = pd.to_datetime(
+                    df["Timestamp"], errors="coerce"
+                )
+            df["Date_Only"] = df["Timestamp_dt"].dt.strftime("%Y-%m-%d")
 
             summary_records = []
-            
-            # Subject (including special characters) aur Date wise Grouping
-            grouped = df.groupby(['Subject', 'Date_Only'], sort=False)
+
+            # Subject aur Date wise Grouping (sort=False preserves newest order)
+            grouped = df.groupby(["Subject", "Date_Only"], sort=False)
 
             for (subject_title, date_val), group in grouped:
                 total_cnt = len(group)
-                sent_cnt = len(group[group['Status'].astype(str).str.contains('Sent', na=False)])
-                failed_cnt = len(group[group['Status'].astype(str).str.contains('Failed', na=False)])
+                sent_cnt = len(
+                    group[
+                        group["Status"]
+                        .astype(str)
+                        .str.contains("Sent", na=False)
+                    ]
+                )
+                failed_cnt = len(
+                    group[
+                        group["Status"]
+                        .astype(str)
+                        .str.contains("Failed", na=False)
+                    ]
+                )
 
-                start_t = group['Timestamp_dt'].min()
-                end_t = group['Timestamp_dt'].max()
+                start_t = group["Timestamp_dt"].min()
+                end_t = group["Timestamp_dt"].max()
 
                 if pd.notnull(start_t) and pd.notnull(end_t):
                     duration_sec = (end_t - start_t).total_seconds()
                     mins = int(duration_sec // 60)
                     secs = int(duration_sec % 60)
-                    time_duration = f"{mins}m {secs}s" if mins > 0 else f"{secs}s"
+                    time_duration = (
+                        f"{mins}m {secs}s" if mins > 0 else f"{secs}s"
+                    )
                     time_range = f"{start_t.strftime('%I:%M %p')} - {end_t.strftime('%I:%M %p')}"
                 else:
                     time_duration = "N/A"
@@ -74,12 +122,12 @@ if os.path.exists(HISTORY_FILE):
 
                 summary_records.append({
                     "Date": date_val if pd.notnull(date_val) else "N/A",
-                    "Subject Title": str(subject_title),  # As-it-is special characters preserved
+                    "Subject Title": str(subject_title),
                     "Total Contacts": total_cnt,
                     "Sent ✅": sent_cnt,
                     "Failed ❌": failed_cnt,
                     "Time Interval": time_range,
-                    "Duration": time_duration
+                    "Duration": time_duration,
                 })
 
             summary_df = pd.DataFrame(summary_records)
@@ -88,8 +136,9 @@ if os.path.exists(HISTORY_FILE):
             # Individual Clean Notes Cards
             st.markdown("**📌 Campaign Detail Cards**")
             for _, item in summary_df.iterrows():
-                # Raw text/markdown escape to keep special characters as-is
-                clean_title = item['Subject Title'].replace("*", "\\*").replace("_", "\\_")
+                clean_title = (
+                    item["Subject Title"].replace("*", "\\*").replace("_", "\\_")
+                )
                 st.info(
                     f"📅 **Date:** `{item['Date']}` | ✉️ **Subject:** **{clean_title}**\n\n"
                     f"👉 **Total Contacts:** {item['Total Contacts']} ({item['Sent ✅']} Sent, {item['Failed ❌']} Failed) "
@@ -101,29 +150,33 @@ if os.path.exists(HISTORY_FILE):
             # --- SEARCH & ALL LOGS TABLE ---
             st.markdown("### 🔍 All Executed Email Logs")
             search_query = st.text_input("Search Logs (Subject, Email, Date):")
-            
+
             if search_query:
                 filtered_df = df[
-                    df["Recipient"].astype(str).str.contains(search_query, case=False, na=False)
-                    | df["Subject"].astype(str).str.contains(search_query, case=False, na=False)
-                    | df["Timestamp"].astype(str).str.contains(search_query, case=False, na=False)
+                    df["Recipient"]
+                    .astype(str)
+                    .str.contains(search_query, case=False, na=False)
+                    | df["Subject"]
+                    .astype(str)
+                    .str.contains(search_query, case=False, na=False)
+                    | df["Timestamp"]
+                    .astype(str)
+                    .str.contains(search_query, case=False, na=False)
                 ]
             else:
                 filtered_df = df
 
-            # Original Dataframe View (dropping temporary datetime helper columns)
-            display_df = filtered_df.drop(columns=['Timestamp_dt', 'Date_Only'], errors='ignore')
+            # Temporary datetime helper columns drop karke display karein
+            display_df = filtered_df.drop(
+                columns=["Timestamp_dt", "Date_Only"], errors="ignore"
+            )
             st.dataframe(display_df, use_container_width=True)
 
             col_down, col_clear = st.columns([3, 1])
-
             with col_down:
                 csv_data = display_df.to_csv(index=False).encode("utf-8")
-                
-                # File name me dynamic Date aur Time mention karne ka logic
                 current_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 dynamic_filename = f"email_history_{current_timestamp}.csv"
-
                 st.download_button(
                     label="📥 Download CSV History",
                     data=csv_data,
@@ -142,4 +195,6 @@ if os.path.exists(HISTORY_FILE):
     except Exception as e:
         st.error(f"Error reading history file: {e}")
 else:
-    st.info("ℹ️ Abhi tak koi Email History record nahi hui hai. Mail bhejne ke baad data yahan dikhega.")
+    st.info(
+        "ℹ️ Abhi tak koi Email History record nahi hui hai. Mail bhejne ke baad data yahan dikhega."
+    )
