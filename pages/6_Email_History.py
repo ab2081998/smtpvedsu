@@ -4,7 +4,7 @@ import sys
 import pandas as pd
 import streamlit as st
 
-# --- 0. AUTHENTICATION CHECK ---
+# --- 0. AUTHENTICATION & SESSION CHECK ---
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if parent_dir not in sys.path:
     sys.path.append(parent_dir)
@@ -16,9 +16,21 @@ if hasattr(auth, "require_auth"):
 elif hasattr(auth, "check_auth"):
     auth.check_auth()
 
+# Fallback password unlock form (Refreshing par page lock na ho baki pages ki tarah)
 if not st.session_state.get("authenticated", False):
     st.subheader("🔒 Page Locked")
-    st.stop()
+    password_input = st.text_input("Enter password to unlock page:", type="password")
+    correct_password = st.secrets.get("APP_PASSWORD", "admin123")
+    if st.button("Unlock"):
+        if password_input == correct_password:
+            st.session_state["authenticated"] = True
+            st.success("Unlocked successfully!")
+            st.rerun()
+        else:
+            st.error("Incorrect password. Please try again.")
+            st.stop()
+    else:
+        st.stop()
 
 # --- PAGE CONFIG & TITLE ---
 st.title("📊 Email Logs & History Dashboard")
@@ -30,21 +42,19 @@ HISTORY_FILE = "email_history.csv"
 
 if os.path.exists(HISTORY_FILE):
     try:
-        # Special characters ko as-it-is exact format me load karne ke liye utf-8 encoding
+        # Special characters ko exact format me load karne ke liye utf-8 encoding
         df = pd.read_csv(HISTORY_FILE, dtype=str)
 
         if df.empty:
             st.info("ℹ️ History file abhi khali hai.")
         else:
-            # --- 🆕 RECENT ON TOP (Z to A / NEWEST FIRST SORTING) ---
+            # --- RECENT ON TOP (Z to A / NEWEST FIRST SORTING) ---
             if "Timestamp" in df.columns:
-                # Helper column for proper datetime sorting
                 df["Timestamp_dt"] = pd.to_datetime(
                     df["Timestamp"], errors="coerce"
                 )
                 df = df.sort_values(by="Timestamp_dt", ascending=False)
             else:
-                # Fallback: simple reverse order
                 df = df.iloc[::-1]
 
             # Stats Summary
@@ -76,7 +86,6 @@ if os.path.exists(HISTORY_FILE):
             # --- CAMPAIGN WISE ANALYTICS / NOTES ---
             st.markdown("### 📋 Campaign Wise Summary Notes")
 
-            # Date_Only extract karein
             if "Timestamp_dt" not in df.columns:
                 df["Timestamp_dt"] = pd.to_datetime(
                     df["Timestamp"], errors="coerce"
@@ -85,7 +94,7 @@ if os.path.exists(HISTORY_FILE):
 
             summary_records = []
 
-            # Subject aur Date wise Grouping (sort=False preserves newest order)
+            # Subject aur Date wise Grouping (sort=False Newest-First Order Preserve Rakhta Hai)
             grouped = df.groupby(["Subject", "Date_Only"], sort=False)
 
             for (subject_title, date_val), group in grouped:
@@ -166,7 +175,7 @@ if os.path.exists(HISTORY_FILE):
             else:
                 filtered_df = df
 
-            # Temporary datetime helper columns drop karke display karein
+            # Temporary datetime helper columns drop karke Table me display karein
             display_df = filtered_df.drop(
                 columns=["Timestamp_dt", "Date_Only"], errors="ignore"
             )
