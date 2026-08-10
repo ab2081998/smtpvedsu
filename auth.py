@@ -20,7 +20,7 @@ def require_login():
         except ValueError:
             pass
 
-    # 2. Not Authenticated -> Hide Sidebar & Navigation Controls
+    # 2. Not Authenticated -> Hide Sidebar & Styled Centered Layout
     if not st.session_state.get("authenticated", False):
         st.markdown(
             """
@@ -28,30 +28,47 @@ def require_login():
             [data-testid="stSidebar"] {display: none !important;}
             [data-testid="stSidebarNav"] {display: none !important;}
             [data-testid="collapsedControl"] {display: none !important;}
-            /* Reduce top padding for single screen fit */
-            .block-container {
+            
+            /* Center Align Container Content */
+            .main .block-container {
+                max-width: 800px;
                 padding-top: 2rem !important;
-                padding-bottom: 1rem !important;
+                padding-bottom: 2rem !important;
+                margin: auto;
+            }
+            .centered-text {
+                text-align: center;
             }
             </style>
             """,
             unsafe_allow_html=True,
         )
 
-        # --- COMPACT 2-COLUMN LAYOUT FOR SINGLE SCREEN FIT ---
-        col_left, col_right = st.columns([1.1, 0.9], gap="large")
+        # --- 1. TOP HEADER (CENTERED) ---
+        st.markdown(
+            "<h1 style='text-align: center;'>🎯 Smart CRM & Bulk Outreach Suite</h1>",
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            "<p style='text-align: center; font-size: 1.1rem; color: #555;'>"
+            "Welcome to your <b>centralized CRM & Automation Hub</b>. Quick-launch your marketing workflows below."
+            "</p>",
+            unsafe_allow_html=True,
+        )
 
-        with col_left:
-            st.title("🎯 Smart CRM Suite")
-            st.markdown(
-                "Welcome to your **centralized CRM & Automation Hub**. Quick-launch your marketing workflows below."
-            )
-            
-            st.markdown(
-                "<p style='font-size: 1.1rem; margin-top: 15px;'><b>🔒 CRM Portal Login</b></p>",
-                unsafe_allow_html=True,
-            )
+        st.divider()
 
+        # --- 2. LOGIN CARD (CENTERED) ---
+        st.markdown(
+            "<h3 style='text-align: center;'><b>🔒 CRM Portal Login</b></h3>",
+            unsafe_allow_html=True,
+        )
+
+        # Center Column for Login Inputs
+        col1, col2, col3 = st.columns([1, 2, 1])
+
+        with col2:
+            st.info("Enter master passcode to unlock CRM tools.", icon="🔑")
             entered_password = st.text_input(
                 "Enter Passcode:", type="password", key="main_passcode_input", placeholder="••••••••"
             )
@@ -69,16 +86,28 @@ def require_login():
                 else:
                     st.error("❌ Incorrect Passcode! Please try again.")
 
-        with col_right:
-            with st.container(border=True):
-                st.markdown("### 💡 Why Use This CRM Suite?")
-                st.markdown(
-                    """
+        st.divider()
+
+        # --- 3. FEATURES LIST (CENTERED BOX) ---
+        st.markdown(
+            """
+            <div style='text-align: center;'>
+                <h3>💡 Why Use This CRM Suite?</h3>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        # Centered Box for Bullets
+        f_col1, f_col2, f_col3 = st.columns([0.15, 0.7, 0.15])
+        with f_col2:
+            st.markdown(
+                """
 * 📬 **Automated Bulk Emailing:** Send personalized campaigns with simple CSV files.
 * 🎯 **Smart Personalization:** Auto-handles missing contact names with fallback greetings (*Hi there*).
 * 📊 **Live Campaign Tracking:** Real-time progress bars, success logs, and failure analytics.
 * 🔒 **Secure SMTP Credentials:** Safely store app credentials per session.
-                    """
-                )
+                """
+            )
 
         st.stop()
