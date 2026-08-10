@@ -41,9 +41,9 @@ def require_login():
 
         st.divider()
 
-        # --- 2. LOGIN FORM (IN MIDDLE) ---
+        # --- 2. LOGIN FORM (IN MIDDLE) WITH BOLD HEADING ---
         st.markdown(
-            "<h2 style='text-align: center;'>🔒 CRM Portal Login</h2>",
+            "<h2 style='text-align: center;'><b>🔒 CRM Portal Login</b></h2>",
             unsafe_allow_html=True,
         )
 
