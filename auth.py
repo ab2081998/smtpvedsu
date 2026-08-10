@@ -33,7 +33,15 @@ def require_login():
             unsafe_allow_html=True,
         )
 
-        # --- LOGIN FORM AT TOP ---
+        # --- 1. TOP MESSAGE ---
+        st.title("🎯 Smart CRM & Bulk Outreach Suite")
+        st.markdown(
+            "Welcome to your **centralized CRM & Automation Hub**. Quick-launch your marketing workflows below."
+        )
+
+        st.divider()
+
+        # --- 2. LOGIN FORM (IN MIDDLE) ---
         st.markdown(
             "<h2 style='text-align: center;'>🔒 CRM Portal Login</h2>",
             unsafe_allow_html=True,
@@ -62,12 +70,9 @@ def require_login():
 
         st.divider()
 
-        # --- CRM MESSAGE BELOW LOGIN ---
-        st.title("🎯 Smart CRM & Bulk Outreach Suite")
+        # --- 3. REST OF THE MESSAGE (AT BOTTOM) ---
         st.markdown(
             """
-Welcome to your **centralized CRM & Automation Hub**. Quick-launch your marketing workflows below.
-
 ### 💡 Why Use This CRM Suite?
 * 📬 **Automated Bulk Emailing:** Send personalized campaigns with simple CSV files.
 * 🎯 **Smart Personalization:** Auto-handles missing contact names with fallback greetings (*Hi there*).
