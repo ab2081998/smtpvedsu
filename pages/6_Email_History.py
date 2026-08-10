@@ -32,53 +32,64 @@ if not st.session_state.get("authenticated", False):
     else:
         st.stop()
 
-# --- CUSTOM CSS FOR MODERN DASHBOARD UI ---
+# --- CLEAN, SIMPLE & COOL MODERN UI CSS ---
 st.markdown("""
 <style>
-    /* Metric Cards Styling */
+    /* Metric Cards - Simple & Sleek */
     div[data-testid="stMetric"] {
-        background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
-        border: 1px solid #374151;
-        border-radius: 12px;
-        padding: 16px;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-        transition: transform 0.2s ease, border-color 0.2s ease;
+        background-color: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 10px;
+        padding: 14px 18px;
+        transition: border-color 0.2s ease, background-color 0.2s ease;
     }
     div[data-testid="stMetric"]:hover {
-        transform: translateY(-2px);
-        border-color: #4b5563;
+        border-color: rgba(255, 255, 255, 0.2);
+        background-color: rgba(255, 255, 255, 0.05);
     }
     div[data-testid="stMetricLabel"] {
-        font-size: 0.875rem !important;
-        font-weight: 600 !important;
-        color: #9ca3af !important;
+        font-size: 0.85rem !important;
+        font-weight: 500 !important;
+        opacity: 0.7;
     }
     div[data-testid="stMetricValue"] {
-        font-size: 1.75rem !important;
-        font-weight: 700 !important;
-        color: #f3f4f6 !important;
+        font-size: 1.6rem !important;
+        font-weight: 600 !important;
     }
 
-    /* Info Alert Cards */
+    /* Subtitles & Section Headings */
+    h3 {
+        font-weight: 600 !important;
+        font-size: 1.25rem !important;
+        letter-spacing: -0.2px !important;
+        margin-top: 1rem !important;
+    }
+
+    /* Clean Info Box Design */
     div[data-testid="stAlert"] {
-        border-radius: 10px !important;
-        border: 1px solid #1e3a8a !important;
-        background-color: #0f172a !important;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        border-radius: 8px !important;
+        border: 1px solid rgba(59, 130, 246, 0.2) !important;
+        background-color: rgba(59, 130, 246, 0.05) !important;
+        padding: 12px 16px !important;
     }
 
-    /* Primary Buttons Styling */
+    /* Action Buttons - Minimal Styling */
     button[kind="primary"] {
         border-radius: 8px !important;
-        font-weight: 600 !important;
-        letter-spacing: 0.3px !important;
-        transition: all 0.2s ease-in-out !important;
+        font-weight: 500 !important;
+        box-shadow: none !important;
     }
-
-    /* Secondary Action Buttons */
+    
     div.stButton > button {
         border-radius: 8px !important;
-        transition: all 0.2s ease !important;
+        border: 1px solid rgba(255, 255, 255, 0.15) !important;
+        font-weight: 500 !important;
+    }
+
+    /* Dataframe Table Clean Edges */
+    div[data-testid="stDataFrame"] {
+        border-radius: 8px;
+        overflow: hidden;
     }
 </style>
 """, unsafe_allow_html=True)
