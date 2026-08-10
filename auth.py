@@ -43,7 +43,7 @@ def require_login():
 
         # --- 2. LOGIN FORM (IN MIDDLE) WITH BOLD HEADING ---
         st.markdown(
-            "<h2 style='text-align: center;'><b>🔒 CRM Portal Login</b></h2>",
+            "<p style='text-align: center;'><b>🔒 CRM Portal Login</b></p>",
             unsafe_allow_html=True,
         )
 
