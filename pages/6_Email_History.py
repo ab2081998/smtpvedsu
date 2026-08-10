@@ -4,6 +4,13 @@ import sys
 import pandas as pd
 import streamlit as st
 
+# --- PAGE CONFIG (FULL PAGE / WIDE LAYOUT) ---
+st.set_page_config(
+    page_title="Email Logs & History Dashboard",
+    page_icon="📊",
+    layout="wide",  # Screen ki full width utilize karega
+)
+
 # --- 0. AUTHENTICATION & SESSION CHECK ---
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if parent_dir not in sys.path:
@@ -32,16 +39,23 @@ if not st.session_state.get("authenticated", False):
     else:
         st.stop()
 
-# --- CLEAN, SIMPLE & COOL MODERN UI CSS ---
+# --- CLEAN & FULL PAGE CSS ---
 st.markdown("""
 <style>
-    /* Metric Cards - Simple & Sleek */
+    /* Top padding reduce karne ke liye taaki full page utilize ho */
+    .block-container {
+        padding-top: 2rem !important;
+        padding-bottom: 2rem !important;
+        max-width: 95% !important;
+    }
+
+    /* Minimal & Sleek Metric Cards */
     div[data-testid="stMetric"] {
         background-color: rgba(255, 255, 255, 0.03);
         border: 1px solid rgba(255, 255, 255, 0.08);
         border-radius: 10px;
-        padding: 14px 18px;
-        transition: border-color 0.2s ease, background-color 0.2s ease;
+        padding: 14px 20px;
+        transition: all 0.2s ease;
     }
     div[data-testid="stMetric"]:hover {
         border-color: rgba(255, 255, 255, 0.2);
@@ -53,31 +67,29 @@ st.markdown("""
         opacity: 0.7;
     }
     div[data-testid="stMetricValue"] {
-        font-size: 1.6rem !important;
+        font-size: 1.7rem !important;
         font-weight: 600 !important;
     }
 
-    /* Subtitles & Section Headings */
+    /* Clean Section Headers */
     h3 {
         font-weight: 600 !important;
         font-size: 1.25rem !important;
-        letter-spacing: -0.2px !important;
-        margin-top: 1rem !important;
+        margin-top: 0.8rem !important;
     }
 
-    /* Clean Info Box Design */
+    /* Soft Info Alert Box */
     div[data-testid="stAlert"] {
         border-radius: 8px !important;
         border: 1px solid rgba(59, 130, 246, 0.2) !important;
-        background-color: rgba(59, 130, 246, 0.05) !important;
+        background-color: rgba(59, 130, 246, 0.04) !important;
         padding: 12px 16px !important;
     }
 
-    /* Action Buttons - Minimal Styling */
+    /* Buttons */
     button[kind="primary"] {
         border-radius: 8px !important;
         font-weight: 500 !important;
-        box-shadow: none !important;
     }
     
     div.stButton > button {
@@ -86,7 +98,7 @@ st.markdown("""
         font-weight: 500 !important;
     }
 
-    /* Dataframe Table Clean Edges */
+    /* Full Width Dataframe Tables */
     div[data-testid="stDataFrame"] {
         border-radius: 8px;
         overflow: hidden;
@@ -94,7 +106,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- PAGE CONFIG & TITLE ---
+# --- HEADER SECTION ---
 st.title("📊 Email Logs & History Dashboard")
 st.caption("Yahan aap bheje gaye sabhi emails ka Date, Time, Subject, Recipient, aur Status dekh sakte hain.")
 
@@ -107,7 +119,7 @@ if os.path.exists(HISTORY_FILE):
         if df.empty:
             st.info("ℹ️ History file abhi khali hai.")
         else:
-            # --- RECENT ON TOP (Z to A / NEWEST FIRST SORTING) ---
+            # --- RECENT ON TOP (NEWEST FIRST SORTING) ---
             if "Timestamp" in df.columns:
                 df["Timestamp_dt"] = pd.to_datetime(df["Timestamp"], errors="coerce")
                 df = df.sort_values(by="Timestamp_dt", ascending=False)
