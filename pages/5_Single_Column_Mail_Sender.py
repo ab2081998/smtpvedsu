@@ -14,7 +14,6 @@ from streamlit_quill import st_quill
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if parent_dir not in sys.path:
     sys.path.append(parent_dir)
-
 import auth
 
 # Force Authentication Check via auth.py
@@ -35,7 +34,7 @@ if not st.session_state.get("authenticated", False):
             st.rerun()
         else:
             st.error("Incorrect password. Please try again.")
-            st.stop()
+    st.stop()
 
 # --- 1. SECRETS SE MULTI-SMTP ACCOUNTS FETCH KARNA ---
 smtp_secrets = st.secrets.get("smtp_accounts", {})
@@ -63,6 +62,7 @@ if not st.session_state["smtp_profiles"]:
     DEF_SERVER = st.secrets.get("DEFAULT_SMTP_SERVER", "smtp.resend.com")
     DEF_PORT = st.secrets.get("DEFAULT_SMTP_PORT", 587)
     DEF_NAME = st.secrets.get("DEFAULT_SMTP_NAME", "Bulk Mailer")
+
     st.session_state["smtp_profiles"]["Default Profile"] = {
         "email": DEF_EMAIL,
         "user": DEF_USER,
@@ -110,9 +110,10 @@ with st.sidebar:
     profile_save_name = st.text_input(
         "Save As Profile Name:", value=selected_profile_name
     )
-    button_container = st.container()
-    st.markdown("---")
 
+    button_container = st.container()
+
+    st.markdown("---")
     s_email = st.text_input("Sender Email (From):", value=selected_profile["email"])
     s_user = st.text_input("SMTP Username:", value=selected_profile["user"])
     s_pass = st.text_input(
@@ -192,6 +193,7 @@ uploaded_file = st.file_uploader(
     type=["csv"],
     key="single_col_csv_file_uploader",
 )
+
 df = None
 email_col = None
 
@@ -218,25 +220,93 @@ st.divider()
 
 # --- STEP B: EMAIL CONTENT ---
 st.markdown("**2. Email Content**")
-with st.form(key="email_content_form"):
-    subject_input = st.text_input("Email Subject:", value="Important Announcement")
-    quill_res = st_quill(
-        value=st.session_state["editor_text"],
-        html=True,
-        key="quill_editor_fixed",
-    )
-    save_draft = st.form_submit_button("💾 Save Template / Content")
-    if save_draft and quill_res:
-        st.session_state["editor_text"] = quill_res
+
+subject_input = st.text_input("Email Subject:", value="Important Announcement")
+
+quill_res = st_quill(
+    value=st.session_state["editor_text"], 
+    html=True, 
+    key="quill_editor_fixed"
+)
+
+# Editor me change hone par dynamic body fetch karne ka logic
+active_body = quill_res if (quill_res and quill_res != "") else st.session_state["editor_text"]
+
+# Save Template aur Test Mail Toolbar (Side-by-side Layout)
+col_save, col_test_input, col_test_btn = st.columns([1.5, 2.5, 1])
+
+with col_save:
+    if st.button("💾 Save Template / Content", use_container_width=True):
+        st.session_state["editor_text"] = active_body
         st.success("✅ Content Saved!")
 
-if quill_res and quill_res != st.session_state["editor_text"]:
-    st.session_state["editor_text"] = quill_res
+with col_test_input:
+    test_recipient = st.text_input(
+        "Test Email To:", 
+        placeholder="recipient@example.com", 
+        label_visibility="collapsed"
+    )
+
+with col_test_btn:
+    send_test_btn = st.button("🧪 Send Test Mail", type="primary", use_container_width=True)
+
+# Test Email Execution Block
+if send_test_btn:
+    if not test_recipient or "@" not in test_recipient:
+        st.error("❌ Valid recipient email address dalein!")
+    else:
+        sender_email = st.session_state["smtp_email"]
+        smtp_username = st.session_state["smtp_user"] or sender_email
+        sender_password = st.session_state["smtp_password"]
+        smtp_server = st.session_state["smtp_server"]
+        smtp_port = st.session_state["smtp_port"]
+        sender_name = st.session_state["smtp_name"]
+        
+        test_subject = f"[TEST] {subject_input}"
+        test_body = active_body.replace("{Name}", "Test User")
+
+        try:
+            msg = MIMEMultipart("alternative")
+            msg["From"] = formataddr((sender_name, sender_email))
+            msg["To"] = test_recipient
+            msg["Subject"] = test_subject
+
+            clean_formatted_html = f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+            <style>
+            p {{ margin: 0 0 6px 0 !important; padding: 0 !important; line-height: 1.4 !important; }}
+            div {{ margin: 0 !important; padding: 0 !important; line-height: 1.4 !important; }}
+            </style>
+            </head>
+            <body style="font-family: Arial, sans-serif; font-size: 14px; color: #333333; line-height: 1.4; margin: 0; padding: 10px;">
+            {test_body}
+            </body>
+            </html>
+            """
+            msg.attach(MIMEText(clean_formatted_html, "html"))
+
+            if int(smtp_port) == 465:
+                with smtplib.SMTP_SSL(smtp_server, int(smtp_port), timeout=15) as server:
+                    server.login(smtp_username, sender_password)
+                    server.sendmail(sender_email, test_recipient, msg.as_string())
+            else:
+                with smtplib.SMTP(smtp_server, int(smtp_port), timeout=15) as server:
+                    server.starttls()
+                    server.login(smtp_username, sender_password)
+                    server.sendmail(sender_email, test_recipient, msg.as_string())
+
+            st.success(f"✅ Test email successfully sent to `{test_recipient}`!")
+
+        except Exception as e:
+            st.error(f"❌ Failed to send Test Email: {str(e)}")
 
 st.divider()
 
 # --- STEP C: BULK SENDING LOGIC WITH AUTO-RESUME & RETRY ---
 st.markdown("**3. Start Bulk Campaign**")
+
 notification_box = st.container()
 FALLBACK_NAME = "there"
 HISTORY_FILE = "email_history.csv"
@@ -252,8 +322,9 @@ if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
     smtp_server = st.session_state["smtp_server"]
     smtp_port = st.session_state["smtp_port"]
     sender_name = st.session_state["smtp_name"]
+
     total_records = len(df)
-    current_body = st.session_state["editor_text"]
+    current_body = active_body
 
     # 1. PEHLE SE SENT EMAILS LOAD KAREIN (TO SKIP THEM AUTOMATICALLY)
     already_sent_emails = set()
@@ -273,7 +344,6 @@ if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
     with notification_box:
         progress_bar = st.progress(0)
         status_text = st.empty()
-
         success_count = 0
         failed_count = 0
         skipped_count = 0
@@ -333,13 +403,13 @@ if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
                     <!DOCTYPE html>
                     <html>
                     <head>
-                        <style>
-                            p {{ margin: 0 0 6px 0 !important; padding: 0 !important; line-height: 1.4 !important; }}
-                            div {{ margin: 0 !important; padding: 0 !important; line-height: 1.4 !important; }}
-                        </style>
+                    <style>
+                    p {{ margin: 0 0 6px 0 !important; padding: 0 !important; line-height: 1.4 !important; }}
+                    div {{ margin: 0 !important; padding: 0 !important; line-height: 1.4 !important; }}
+                    </style>
                     </head>
                     <body style="font-family: Arial, sans-serif; font-size: 14px; color: #333333; line-height: 1.4; margin: 0; padding: 10px;">
-                        {custom_body}
+                    {custom_body}
                     </body>
                     </html>
                     """
@@ -350,14 +420,18 @@ if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
                             smtp_server, int(smtp_port), timeout=15
                         ) as server:
                             server.login(smtp_username, sender_password)
-                            server.sendmail(sender_email, recipient_email, msg.as_string())
+                            server.sendmail(
+                                sender_email, recipient_email, msg.as_string()
+                            )
                     else:
                         with smtplib.SMTP(
                             smtp_server, int(smtp_port), timeout=15
                         ) as server:
                             server.starttls()
                             server.login(smtp_username, sender_password)
-                            server.sendmail(sender_email, recipient_email, msg.as_string())
+                            server.sendmail(
+                                sender_email, recipient_email, msg.as_string()
+                            )
 
                     success_count += 1
                     email_sent = True
@@ -370,6 +444,7 @@ if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
                         "Reason": "Success",
                     }
                     logs.append(log_data)
+
                     # Instant history saving
                     pd.DataFrame([log_data]).to_csv(
                         HISTORY_FILE,
