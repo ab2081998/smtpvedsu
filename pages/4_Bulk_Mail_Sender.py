@@ -1,3 +1,4 @@
+from datetime import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import formataddr
@@ -87,7 +88,7 @@ TEMPLATES = {
     "Custom (Blank)": """<p>Hello {Name},</p>
 <p>I hope this email finds you well.</p>
 <p>Write your message here...</p>""",
-        "Notification / Alert": """
+    "Notification / Alert": """
 <div style="font-family: Arial, sans-serif; padding: 15px; border: 1px solid #d9edf7; border-radius: 8px; background-color: #f4f8fa;">
     <p style="margin: 0 0 8px 0;">Hi {Name},</p>
     <p style="margin: 0 0 8px 0;">I hope this email finds you well.</p>
@@ -221,10 +222,11 @@ editor_content = st_quill(
 
 st.divider()
 
-# --- STEP C: BULK SENDING LOGIC ---
+# --- STEP C: BULK SENDING LOGIC WITH AUTO-RESUME & RETRY ---
 st.markdown("**3. Start Bulk Campaign**")
 notification_box = st.container()
 FALLBACK_NAME = "there"
+HISTORY_FILE = "email_history.csv"
 
 if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
     if df is None or len(df) == 0:
@@ -240,11 +242,29 @@ if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
 
     total_records = len(df)
 
+    # 1. PEHLE SE SENT EMAILS LOAD KAREIN (TO SKIP THEM AUTOMATICALLY)
+    already_sent_emails = set()
+    if os.path.exists(HISTORY_FILE):
+        try:
+            history_df = pd.read_csv(HISTORY_FILE)
+            # Column detection to handle 'Recipient' or 'Email' headers in history
+            target_col = "Recipient" if "Recipient" in history_df.columns else ("Email" if "Email" in history_df.columns else None)
+            if target_col and "Status" in history_df.columns:
+                already_sent_emails = set(
+                    history_df[history_df["Status"] == "Sent ✅"][target_col]
+                    .astype(str)
+                    .str.strip()
+                    .str.lower()
+                )
+        except Exception as e:
+            st.warning(f"History load nahi ho saki: {e}")
+
     with notification_box:
         progress_bar = st.progress(0)
         status_text = st.empty()
         success_count = 0
         failed_count = 0
+        skipped_count = 0
         logs = []
 
         for index, row in df.iterrows():
@@ -254,76 +274,123 @@ if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
             recipient_email = (
                 str(row[email_col]).strip() if pd.notna(row[email_col]) else ""
             )
+            now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
             if not recipient_name:
                 recipient_name = FALLBACK_NAME
 
-            if not recipient_email or "@" not in recipient_email:
-                logs.append(
-                    {
-                        "Name": recipient_name,
-                        "Email": recipient_email,
-                        "Status": "Failed ❌",
-                        "Reason": "Invalid Email",
-                    }
+            # --- AUTO RESUME LOGIC: Skip already sent emails ---
+            if recipient_email.lower() in already_sent_emails:
+                skipped_count += 1
+                current_progress = (index + 1) / total_records
+                progress_bar.progress(current_progress)
+                status_text.text(
+                    f"⏩ Skipped {index + 1}/{total_records}: {recipient_email} (Already Sent)"
                 )
+                continue
+
+            if not recipient_email or "@" not in recipient_email:
                 failed_count += 1
+                log_data = {
+                    "Timestamp": now_str,
+                    "Sender": sender_email,
+                    "Name": recipient_name,
+                    "Recipient": recipient_email,
+                    "Subject": subject_input,
+                    "Status": "Failed ❌",
+                    "Reason": "Invalid Email",
+                }
+                logs.append(log_data)
+                pd.DataFrame([log_data]).to_csv(
+                    HISTORY_FILE,
+                    mode="a",
+                    header=not os.path.exists(HISTORY_FILE),
+                    index=False,
+                )
                 continue
 
             custom_subject = subject_input.replace("{Name}", recipient_name)
             custom_body = editor_content.replace("{Name}", recipient_name)
 
-            try:
-                msg = MIMEMultipart("alternative")
-                msg["From"] = formataddr((sender_name, sender_email))
-                msg["To"] = recipient_email
-                msg["Subject"] = custom_subject
+            # Retry mechanism agar connection drop/timeout ho jaye
+            max_retries = 3
 
-                clean_formatted_html = f"""
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <style>
-                        p {{ margin: 0 0 6px 0 !important; padding: 0 !important; line-height: 1.4 !important; }}
-                        div {{ margin: 0 !important; padding: 0 !important; line-height: 1.4 !important; }}
-                    </style>
-                </head>
-                <body style="font-family: Arial, sans-serif; font-size: 14px; color: #333333; line-height: 1.4; margin: 0; padding: 10px;">
-                    {custom_body}
-                </body>
-                </html>
-                """
-                msg.attach(MIMEText(clean_formatted_html, "html"))
+            for attempt in range(max_retries):
+                try:
+                    msg = MIMEMultipart("alternative")
+                    msg["From"] = formataddr((sender_name, sender_email))
+                    msg["To"] = recipient_email
+                    msg["Subject"] = custom_subject
 
-                if int(smtp_port) == 465:
-                    with smtplib.SMTP_SSL(smtp_server, int(smtp_port)) as server:
-                        server.login(smtp_username, sender_password)
-                        server.sendmail(sender_email, recipient_email, msg.as_string())
-                else:
-                    with smtplib.SMTP(smtp_server, int(smtp_port)) as server:
-                        server.starttls()
-                        server.login(smtp_username, sender_password)
-                        server.sendmail(sender_email, recipient_email, msg.as_string())
+                    clean_formatted_html = f"""
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <style>
+                            p {{ margin: 0 0 6px 0 !important; padding: 0 !important; line-height: 1.4 !important; }}
+                            div {{ margin: 0 !important; padding: 0 !important; line-height: 1.4 !important; }}
+                        </style>
+                    </head>
+                    <body style="font-family: Arial, sans-serif; font-size: 14px; color: #333333; line-height: 1.4; margin: 0; padding: 10px;">
+                        {custom_body}
+                    </body>
+                    </html>
+                    """
+                    msg.attach(MIMEText(clean_formatted_html, "html"))
 
-                success_count += 1
-                logs.append(
-                    {
+                    if int(smtp_port) == 465:
+                        with smtplib.SMTP_SSL(smtp_server, int(smtp_port), timeout=15) as server:
+                            server.login(smtp_username, sender_password)
+                            server.sendmail(sender_email, recipient_email, msg.as_string())
+                    else:
+                        with smtplib.SMTP(smtp_server, int(smtp_port), timeout=15) as server:
+                            server.starttls()
+                            server.login(smtp_username, sender_password)
+                            server.sendmail(sender_email, recipient_email, msg.as_string())
+
+                    success_count += 1
+                    log_data = {
+                        "Timestamp": now_str,
+                        "Sender": sender_email,
                         "Name": recipient_name,
-                        "Email": recipient_email,
+                        "Recipient": recipient_email,
+                        "Subject": custom_subject,
                         "Status": "Sent ✅",
                         "Reason": "Success",
                     }
-                )
-            except Exception as e:
-                failed_count += 1
-                logs.append(
-                    {
-                        "Name": recipient_name,
-                        "Email": recipient_email,
-                        "Status": "Failed ❌",
-                        "Reason": str(e),
-                    }
-                )
+                    logs.append(log_data)
+
+                    # Instant history saving (Crash-proof)
+                    pd.DataFrame([log_data]).to_csv(
+                        HISTORY_FILE,
+                        mode="a",
+                        header=not os.path.exists(HISTORY_FILE),
+                        index=False,
+                    )
+                    break
+
+                except Exception as e:
+                    if attempt < max_retries - 1:
+                        time.sleep(2)  # Wait before retry
+                        continue
+                    else:
+                        failed_count += 1
+                        log_data = {
+                            "Timestamp": now_str,
+                            "Sender": sender_email,
+                            "Name": recipient_name,
+                            "Recipient": recipient_email,
+                            "Subject": custom_subject,
+                            "Status": "Failed ❌",
+                            "Reason": str(e),
+                        }
+                        logs.append(log_data)
+                        pd.DataFrame([log_data]).to_csv(
+                            HISTORY_FILE,
+                            mode="a",
+                            header=not os.path.exists(HISTORY_FILE),
+                            index=False,
+                        )
 
             current_progress = (index + 1) / total_records
             progress_bar.progress(current_progress)
@@ -333,28 +400,27 @@ if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
             time.sleep(0.2)
 
         st.success(
-            f"🎯 **Campaign Finished!** Mails Sent: **{success_count}** | Failed: **{failed_count}**"
+            f"🎯 **Campaign Finished!** Mails Sent: **{success_count}** | Skipped (Already Sent): **{skipped_count}** | Failed: **{failed_count}**"
         )
-        st.markdown("**Campaign Summary Report**")
-        log_df = pd.DataFrame(logs)
-        st.dataframe(log_df, use_container_width=True)
+        
+        if logs:
+            st.markdown("**Campaign Summary Report**")
+            log_df = pd.DataFrame(logs)
+            st.dataframe(log_df, use_container_width=True)
 
-        # --- DOWNLOAD REPORT WITH SUBJECT & DATE IN FILENAME ---
-        # 1. Subject line se special/invalid characters safe filename ke liye remove karna
-        safe_subject = re.sub(r'[^\w\s-]', '', subject_input).strip().replace(' ', '_')
-        if not safe_subject:
-            safe_subject = "Campaign_Report"
+            # --- DOWNLOAD REPORT WITH SUBJECT & DATE IN FILENAME ---
+            safe_subject = re.sub(r'[^\w\s-]', '', subject_input).strip().replace(' ', '_')
+            if not safe_subject:
+                safe_subject = "Campaign_Report"
 
-        # 2. Today's Date format YYYY-MM-DD
-        today_date = time.strftime("%Y-%m-%d")
-        download_filename = f"{safe_subject}_{today_date}.csv"
+            today_date = time.strftime("%Y-%m-%d")
+            download_filename = f"{safe_subject}_{today_date}.csv"
 
-        # 3. CSV Download Button
-        csv_data = log_df.to_csv(index=False).encode('utf-8')
-        st.download_button(
-            label="📥 Download Campaign Report (CSV)",
-            data=csv_data,
-            file_name=download_filename,
-            mime="text/csv",
-            type="primary"
-        )
+            csv_data = log_df.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="📥 Download Campaign Report (CSV)",
+                data=csv_data,
+                file_name=download_filename,
+                mime="text/csv",
+                type="primary"
+            )
