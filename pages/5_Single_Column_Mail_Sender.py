@@ -1,3 +1,4 @@
+import csv
 from datetime import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -34,7 +35,7 @@ if not st.session_state.get("authenticated", False):
             st.rerun()
         else:
             st.error("Incorrect password. Please try again.")
-    st.stop()
+            st.stop()
 
 # --- 1. SECRETS SE MULTI-SMTP ACCOUNTS FETCH KARNA ---
 smtp_secrets = st.secrets.get("smtp_accounts", {})
@@ -62,7 +63,6 @@ if not st.session_state["smtp_profiles"]:
     DEF_SERVER = st.secrets.get("DEFAULT_SMTP_SERVER", "smtp.resend.com")
     DEF_PORT = st.secrets.get("DEFAULT_SMTP_PORT", 587)
     DEF_NAME = st.secrets.get("DEFAULT_SMTP_NAME", "Bulk Mailer")
-
     st.session_state["smtp_profiles"]["Default Profile"] = {
         "email": DEF_EMAIL,
         "user": DEF_USER,
@@ -100,7 +100,6 @@ if "editor_text" not in st.session_state:
 with st.sidebar:
     st.divider()
     st.markdown("**⚙️ SMTP Configurations**")
-
     profile_names = list(st.session_state["smtp_profiles"].keys())
     selected_profile_name = st.selectbox(
         "Select Active SMTP Profile:", options=profile_names
@@ -110,7 +109,6 @@ with st.sidebar:
     profile_save_name = st.text_input(
         "Save As Profile Name:", value=selected_profile_name
     )
-
     button_container = st.container()
 
     st.markdown("---")
@@ -196,10 +194,13 @@ uploaded_file = st.file_uploader(
 
 df = None
 email_col = None
+list_name = "Unknown List"
 
 if uploaded_file is not None:
     try:
-        df = pd.read_csv(uploaded_file)
+        # Save list name from uploaded CSV filename (without extension)
+        list_name = os.path.splitext(uploaded_file.name)[0]
+        df = pd.read_csv(uploaded_file, on_bad_lines="skip")
         df.columns = df.columns.str.strip()
         if len(df.columns) < 1:
             st.error("❌ CSV file khali lag rahi hai!")
@@ -211,22 +212,27 @@ if uploaded_file is not None:
                     email_col = col
                     break
             st.success(f"✅ CSV Loaded! Total Records: {len(df)}")
-            st.info(f"📌 **Selected Email Column:** `{email_col}`")
+            st.info(f"📌 **Selected Email Column:** `{email_col}` | **List Name:** `{list_name}`")
             st.dataframe(df.head(5), use_container_width=True)
     except Exception as e:
         st.error(f"Error reading CSV file: {e}")
 
 st.divider()
 
+# Optional field for manual List Name Override
+st.markdown("**1.1. Campaign/List Name Customization**")
+custom_list_name = st.text_input("List Name (for history logging):", value=list_name)
+if custom_list_name.strip():
+    list_name = custom_list_name.strip()
+
+st.divider()
+
 # --- STEP B: EMAIL CONTENT ---
 st.markdown("**2. Email Content**")
-
 subject_input = st.text_input("Email Subject:", value="Important Announcement")
 
 quill_res = st_quill(
-    value=st.session_state["editor_text"], 
-    html=True, 
-    key="quill_editor_fixed"
+    value=st.session_state["editor_text"], html=True, key="quill_editor_fixed"
 )
 
 # Editor me change hone par dynamic body fetch karne ka logic
@@ -242,13 +248,15 @@ with col_save:
 
 with col_test_input:
     test_recipient = st.text_input(
-        "Test Email To:", 
-        placeholder="recipient@example.com", 
-        label_visibility="collapsed"
+        "Test Email To:",
+        placeholder="recipient@example.com",
+        label_visibility="collapsed",
     )
 
 with col_test_btn:
-    send_test_btn = st.button("🧪 Send Test Mail", type="primary", use_container_width=True)
+    send_test_btn = st.button(
+        "🧪 Send Test Mail", type="primary", use_container_width=True
+    )
 
 # Test Email Execution Block
 if send_test_btn:
@@ -261,7 +269,7 @@ if send_test_btn:
         smtp_server = st.session_state["smtp_server"]
         smtp_port = st.session_state["smtp_port"]
         sender_name = st.session_state["smtp_name"]
-        
+
         test_subject = f"[TEST] {subject_input}"
         test_body = active_body.replace("{Name}", "Test User")
 
@@ -275,13 +283,13 @@ if send_test_btn:
             <!DOCTYPE html>
             <html>
             <head>
-            <style>
-            p {{ margin: 0 0 6px 0 !important; padding: 0 !important; line-height: 1.4 !important; }}
-            div {{ margin: 0 !important; padding: 0 !important; line-height: 1.4 !important; }}
-            </style>
+                <style>
+                    p {{ margin: 0 0 6px 0 !important; padding: 0 !important; line-height: 1.4 !important; }}
+                    div {{ margin: 0 !important; padding: 0 !important; line-height: 1.4 !important; }}
+                </style>
             </head>
             <body style="font-family: Arial, sans-serif; font-size: 14px; color: #333333; line-height: 1.4; margin: 0; padding: 10px;">
-            {test_body}
+                {test_body}
             </body>
             </html>
             """
@@ -298,7 +306,6 @@ if send_test_btn:
                     server.sendmail(sender_email, test_recipient, msg.as_string())
 
             st.success(f"✅ Test email successfully sent to `{test_recipient}`!")
-
         except Exception as e:
             st.error(f"❌ Failed to send Test Email: {str(e)}")
 
@@ -306,8 +313,8 @@ st.divider()
 
 # --- STEP C: BULK SENDING LOGIC WITH AUTO-RESUME & RETRY ---
 st.markdown("**3. Start Bulk Campaign**")
-
 notification_box = st.container()
+
 FALLBACK_NAME = "there"
 HISTORY_FILE = "email_history.csv"
 
@@ -330,7 +337,7 @@ if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
     already_sent_emails = set()
     if os.path.exists(HISTORY_FILE):
         try:
-            history_df = pd.read_csv(HISTORY_FILE)
+            history_df = pd.read_csv(HISTORY_FILE, on_bad_lines="skip")
             if "Recipient" in history_df.columns and "Status" in history_df.columns:
                 already_sent_emails = set(
                     history_df[history_df["Status"] == "Sent ✅"]["Recipient"]
@@ -344,6 +351,7 @@ if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
     with notification_box:
         progress_bar = st.progress(0)
         status_text = st.empty()
+
         success_count = 0
         failed_count = 0
         skipped_count = 0
@@ -373,6 +381,7 @@ if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
                     "Sender": sender_email,
                     "Recipient": recipient_email,
                     "Subject": subject_input,
+                    "List_Name": list_name,
                     "Status": "Failed ❌",
                     "Reason": "Invalid Email",
                 }
@@ -382,6 +391,7 @@ if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
                     mode="a",
                     header=not os.path.exists(HISTORY_FILE),
                     index=False,
+                    quoting=csv.QUOTE_ALL,
                 )
                 continue
 
@@ -403,13 +413,13 @@ if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
                     <!DOCTYPE html>
                     <html>
                     <head>
-                    <style>
-                    p {{ margin: 0 0 6px 0 !important; padding: 0 !important; line-height: 1.4 !important; }}
-                    div {{ margin: 0 !important; padding: 0 !important; line-height: 1.4 !important; }}
-                    </style>
+                        <style>
+                            p {{ margin: 0 0 6px 0 !important; padding: 0 !important; line-height: 1.4 !important; }}
+                            div {{ margin: 0 !important; padding: 0 !important; line-height: 1.4 !important; }}
+                        </style>
                     </head>
                     <body style="font-family: Arial, sans-serif; font-size: 14px; color: #333333; line-height: 1.4; margin: 0; padding: 10px;">
-                    {custom_body}
+                        {custom_body}
                     </body>
                     </html>
                     """
@@ -435,25 +445,27 @@ if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
 
                     success_count += 1
                     email_sent = True
+
                     log_data = {
                         "Timestamp": now_str,
                         "Sender": sender_email,
                         "Recipient": recipient_email,
                         "Subject": custom_subject,
+                        "List_Name": list_name,
                         "Status": "Sent ✅",
                         "Reason": "Success",
                     }
                     logs.append(log_data)
 
-                    # Instant history saving
+                    # Instant history saving with strict CSV quoting
                     pd.DataFrame([log_data]).to_csv(
                         HISTORY_FILE,
                         mode="a",
                         header=not os.path.exists(HISTORY_FILE),
                         index=False,
+                        quoting=csv.QUOTE_ALL,
                     )
                     break
-
                 except Exception as e:
                     if attempt < max_retries - 1:
                         time.sleep(2)  # Wait before retry
@@ -465,6 +477,7 @@ if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
                             "Sender": sender_email,
                             "Recipient": recipient_email,
                             "Subject": custom_subject,
+                            "List_Name": list_name,
                             "Status": "Failed ❌",
                             "Reason": str(e),
                         }
@@ -474,6 +487,7 @@ if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
                             mode="a",
                             header=not os.path.exists(HISTORY_FILE),
                             index=False,
+                            quoting=csv.QUOTE_ALL,
                         )
 
             current_progress = (index + 1) / total_records
