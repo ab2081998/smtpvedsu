@@ -62,7 +62,7 @@ except ImportError:
                 st.error("❌ Incorrect password!")
         st.stop()
 
-# --- SIDEBAR LOGOUT & ACTION ---
+# --- SIDEBAR LOGOUT ---
 with st.sidebar:
     st.divider()
     if st.button("🚪 Logout App"):
@@ -81,13 +81,12 @@ df = pd.DataFrame()
 
 if os.path.exists(HISTORY_FILE):
     try:
-        # Strict parsing with bad line skipping to handle tokenizing errors
+        # Bad lines skip setting added to handle extra comma tokenizing errors
         df = pd.read_csv(
             HISTORY_FILE,
             on_bad_lines="skip",
             engine="python",
         )
-        # Clean column names
         df.columns = df.columns.str.strip()
     except Exception as e:
         st.error(f"❌ Error loading history file: {e}")
@@ -96,16 +95,14 @@ if os.path.exists(HISTORY_FILE):
 if df.empty:
     st.info("ℹ️ Koi history records nahi mile ya file empty hai.")
 else:
-    # Column verification and standardizing
     if "Status" not in df.columns:
         df["Status"] = "Unknown"
     
-    # Calculate metrics
+    # 1. OVERALL METRICS CARDS
     total_logs = len(df)
     sent_count = len(df[df["Status"].str.contains("Sent", case=False, na=False)])
     failed_count = len(df[df["Status"].str.contains("Failed", case=False, na=False)])
 
-    # Metric Cards
     col1, col2, col3 = st.columns(3)
     col1.metric("Total Processed", total_logs)
     col2.metric("Successfully Sent ✅", sent_count)
@@ -113,8 +110,40 @@ else:
 
     st.divider()
 
-    # --- FILTERS & SEARCH ---
-    st.markdown("**🔎 Filter & Search Logs**")
+    # 2. LIST NAME / CAMPAIGN CARDS (GROUP BY)
+    list_col = None
+    for possible_col in ["List Name", "Campaign", "Subject", "Sender"]:
+        if possible_col in df.columns:
+            list_col = possible_col
+            break
+
+    if list_col:
+        st.markdown(f"**📁 Campaign / List-wise Summary (`{list_col}`)**")
+        
+        # Group data by List/Campaign/Subject
+        grouped = df.groupby(list_col)
+        
+        # Grid Display for Cards
+        cards_per_row = 3
+        groups = list(grouped)
+        
+        for i in range(0, len(groups), cards_per_row):
+            cols = st.columns(cards_per_row)
+            for j, (group_name, group_df) in enumerate(groups[i : i + cards_per_row]):
+                g_total = len(group_df)
+                g_sent = len(group_df[group_df["Status"].str.contains("Sent", case=False, na=False)])
+                g_failed = len(group_df[group_df["Status"].str.contains("Failed", case=False, na=False)])
+                
+                with cols[j]:
+                    with st.container(border=True):
+                        st.subheader(f"📌 {group_name}")
+                        st.caption(f"Total Records: **{g_total}**")
+                        st.write(f"✅ **Sent:** {g_sent} | ❌ **Failed:** {g_failed}")
+
+        st.divider()
+
+    # 3. FILTERS & SEARCH LOGS
+    st.markdown("**🔎 Filter & Search Detailed Logs**")
     f_col1, f_col2, f_col3 = st.columns(3)
 
     with f_col1:
@@ -149,7 +178,7 @@ else:
 
     st.dataframe(filtered_df, use_container_width=True)
 
-    # --- EXPORT & CLEAR HISTORY ---
+    # 4. EXPORT & CLEAR HISTORY
     c_exp, c_clr = st.columns([2, 1])
 
     with c_exp:
