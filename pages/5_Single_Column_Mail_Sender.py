@@ -62,43 +62,74 @@ except ImportError:
                 st.error("❌ Incorrect password!")
         st.stop()
 
-# --- 1. SMTP ACCOUNTS LOADER FUNCTION ---
+# --- 1. ADVANCED TOML & CSV SMTP LOADER ---
 def load_smtp_accounts():
     accounts = []
-    # 1. secrets.toml se default check
-    def_email = st.secrets.get("DEFAULT_SMTP_EMAIL", "")
-    if def_email:
-        accounts.append({
-            "name": st.secrets.get("DEFAULT_SMTP_NAME", "Default Sender"),
-            "email": def_email,
-            "user": st.secrets.get("DEFAULT_SMTP_USER", def_email),
-            "pass": st.secrets.get("DEFAULT_SMTP_PASS", ""),
-            "server": st.secrets.get("DEFAULT_SMTP_SERVER", "smtp.resend.com"),
-            "port": int(st.secrets.get("DEFAULT_SMTP_PORT", 587)),
-        })
     
-    # 2. smtp_accounts.csv file check
+    # A. Check secrets.toml for multiple accounts
+    try:
+        # 1. Check if accounts exist as a list inside secrets.toml (e.g. [[smtp_accounts]] or smtp_accounts = [...])
+        if "smtp_accounts" in st.secrets:
+            toml_accs = st.secrets["smtp_accounts"]
+            if isinstance(toml_accs, list):
+                for acc in toml_accs:
+                    accounts.append({
+                        "name": acc.get("name", "SMTP Sender"),
+                        "email": acc.get("email", "").strip(),
+                        "user": acc.get("user", acc.get("email", "")).strip(),
+                        "pass": acc.get("pass", acc.get("password", "")).strip(),
+                        "server": acc.get("server", "smtp.resend.com").strip(),
+                        "port": int(acc.get("port", 587)),
+                    })
+            elif isinstance(toml_accs, dict):
+                for key, acc in toml_accs.items():
+                    accounts.append({
+                        "name": acc.get("name", key),
+                        "email": acc.get("email", "").strip(),
+                        "user": acc.get("user", acc.get("email", "")).strip(),
+                        "pass": acc.get("pass", acc.get("password", "")).strip(),
+                        "server": acc.get("server", "smtp.resend.com").strip(),
+                        "port": int(acc.get("port", 587)),
+                    })
+
+        # 2. Check individual keys (DEFAULT_SMTP_...)
+        def_email = st.secrets.get("DEFAULT_SMTP_EMAIL", "")
+        if def_email and not any(a["email"] == def_email for a in accounts):
+            accounts.append({
+                "name": st.secrets.get("DEFAULT_SMTP_NAME", "Default Sender"),
+                "email": def_email.strip(),
+                "user": st.secrets.get("DEFAULT_SMTP_USER", def_email).strip(),
+                "pass": st.secrets.get("DEFAULT_SMTP_PASS", "").strip(),
+                "server": st.secrets.get("DEFAULT_SMTP_SERVER", "smtp.resend.com").strip(),
+                "port": int(st.secrets.get("DEFAULT_SMTP_PORT", 587)),
+            })
+    except Exception as e:
+        pass
+
+    # B. Check smtp_accounts.csv file
     if os.path.exists("smtp_accounts.csv"):
         try:
             acc_df = pd.read_csv("smtp_accounts.csv")
             acc_df.columns = acc_df.columns.str.strip().str.lower()
             for _, row in acc_df.iterrows():
-                accounts.append({
-                    "name": str(row.get("name", "SMTP Sender")),
-                    "email": str(row.get("email", "")).strip(),
-                    "user": str(row.get("user", row.get("email", ""))).strip(),
-                    "pass": str(row.get("password", row.get("pass", ""))).strip(),
-                    "server": str(row.get("server", "smtp.resend.com")).strip(),
-                    "port": int(row.get("port", 587)),
-                })
-        except Exception as e:
-            st.sidebar.error(f"Error loading smtp_accounts.csv: {e}")
-            
+                email_val = str(row.get("email", "")).strip()
+                if email_val and not any(a["email"] == email_val for a in accounts):
+                    accounts.append({
+                        "name": str(row.get("name", "SMTP Sender")),
+                        "email": email_val,
+                        "user": str(row.get("user", email_val)).strip(),
+                        "pass": str(row.get("password", row.get("pass", ""))).strip(),
+                        "server": str(row.get("server", "smtp.resend.com")).strip(),
+                        "port": int(row.get("port", 587)),
+                    })
+        except Exception:
+            pass
+
     return accounts
 
 smtp_list = load_smtp_accounts()
 
-# Session State Setup
+# Session State Auto Initialize
 if "smtp_email" not in st.session_state and smtp_list:
     st.session_state["smtp_email"] = smtp_list[0]["email"]
     st.session_state["smtp_user"] = smtp_list[0]["user"]
@@ -128,27 +159,27 @@ def extract_name_from_email(email_str):
     words = [w.capitalize() for w in clean_part.split() if w]
     return words[0] if words else "there"
 
-# --- 2. SIDEBAR CONFIG & SMTP ACCOUNTS SELECTOR ---
+# --- 2. SIDEBAR CONFIG ---
 with st.sidebar:
     st.divider()
-    st.markdown("**⚙️ Select Saved SMTP Account**")
+    st.markdown("**⚙️ Select SMTP Account**")
     
     if smtp_list:
         acc_labels = [f"{acc['name']} ({acc['email']})" for acc in smtp_list]
         selected_acc_idx = st.selectbox("Available Accounts:", range(len(acc_labels)), format_func=lambda x: acc_labels[x])
         selected_acc = smtp_list[selected_acc_idx]
         
-        if st.button("📌 Apply Selected SMTP", use_container_width=True):
-            st.session_state["smtp_email"] = selected_acc["email"]
-            st.session_state["smtp_user"] = selected_acc["user"]
-            st.session_state["smtp_password"] = selected_acc["pass"]
-            st.session_state["smtp_server"] = selected_acc["server"]
-            st.session_state["smtp_port"] = selected_acc["port"]
-            st.session_state["smtp_name"] = selected_acc["name"]
-            st.success("✅ Applied Account!")
-            st.rerun()
+        # Auto sync with selected dropdown item
+        st.session_state["smtp_email"] = selected_acc["email"]
+        st.session_state["smtp_user"] = selected_acc["user"]
+        st.session_state["smtp_password"] = selected_acc["pass"]
+        st.session_state["smtp_server"] = selected_acc["server"]
+        st.session_state["smtp_port"] = selected_acc["port"]
+        st.session_state["smtp_name"] = selected_acc["name"]
+    else:
+        st.warning("⚠️ No pre-saved accounts found in TOML/CSV")
 
-    st.markdown("**Edit SMTP Config:**")
+    st.markdown("**Edit Current Credentials:**")
     s_email = st.text_input("Sender Email (From):", value=st.session_state.get("smtp_email", ""))
     s_user = st.text_input("SMTP Username:", value=st.session_state.get("smtp_user", ""))
     s_pass = st.text_input("App Password / API Key:", value=st.session_state.get("smtp_password", ""), type="password")
@@ -156,14 +187,14 @@ with st.sidebar:
     s_port = st.number_input("SMTP Port:", value=int(st.session_state.get("smtp_port", 587)), step=1)
     s_name = st.text_input("Sender Name:", value=st.session_state.get("smtp_name", "Bulk Mailer"))
 
-    if st.button("💾 Save Credentials", type="primary", use_container_width=True):
+    if st.button("💾 Save Active Credentials", type="primary", use_container_width=True):
         st.session_state["smtp_email"] = s_email.strip()
         st.session_state["smtp_user"] = s_user.strip()
         st.session_state["smtp_password"] = s_pass.strip()
         st.session_state["smtp_server"] = s_server.strip()
         st.session_state["smtp_port"] = s_port
         st.session_state["smtp_name"] = s_name.strip()
-        st.success("✅ Credentials Updated!")
+        st.success("✅ Credentials Saved!")
         st.rerun()
 
     st.divider()
@@ -179,7 +210,7 @@ st.caption("Send emails using CSV containing only Email IDs. Names will be auto-
 if st.session_state.get("smtp_email"):
     st.info(f"📧 **Active Sender:** `{st.session_state['smtp_name']} <{st.session_state['smtp_email']}>` ({st.session_state['smtp_server']}:{st.session_state['smtp_port']})")
 else:
-    st.warning("⚠️ Pehle Sidebar me SMTP Details select ya save karein!")
+    st.warning("⚠️ Pehle Sidebar me SMTP Details select ya enter karein!")
     st.stop()
 
 # --- STEP A: SINGLE COLUMN CSV UPLOAD ---
