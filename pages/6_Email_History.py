@@ -52,53 +52,36 @@ supabase_client = get_supabase_client()
 
 st.title("📊 Email History & Logs")
 
-# --- 2. SYNC CSV DATA TO SUPABASE (WITHOUT REMOVED COLUMNS) ---
+# --- 2. SYNC CSV DATA TO SUPABASE ---
 if os.path.exists(HISTORY_FILE) and supabase_client:
     with st.expander("☁️ Sync / Push Local CSV Data to Supabase"):
-        st.write("Local `email_history.csv` file se naye records Supabase database me sync karein:")
+        st.write("Local `email_history.csv` file se records Supabase database me sync karein:")
         if st.button("📤 Push CSV Data to Supabase Now"):
             try:
                 csv_df = pd.read_csv(HISTORY_FILE)
                 if not csv_df.empty:
-                    # Duplicate check using recipient & subject
-                    existing_data = supabase_client.table("email_history").select("recipient, subject").execute()
-                    existing_keys = set()
-                    if existing_data.data:
-                        for item in existing_data.data:
-                            existing_keys.add(f"{item.get('recipient')}_{item.get('subject')}")
-
                     records = []
-                    skipped_count = 0
-
                     for _, row in csv_df.iterrows():
-                        rec = str(row.get("Recipient", "")).strip()
-                        subj = str(row.get("Subject", "")).strip()
-                        key = f"{rec}_{subj}"
-
-                        if key in existing_keys:
-                            skipped_count += 1
-                            continue
-
-                        records.append({
-                            "list_name": str(row.get("List Name", "")),
-                            "recipient": rec,
-                            "subject": subj,
-                            "reason": str(row.get("Reason", ""))
-                        })
+                        record = {}
+                        if "List Name" in row: record["list_name"] = str(row["List Name"])
+                        if "Recipient" in row: record["recipient"] = str(row["Recipient"])
+                        if "Reason" in row: record["reason"] = str(row["Reason"])
+                        if "Subject" in row and pd.notna(row["Subject"]): record["subject"] = str(row["Subject"])
+                        
+                        records.append(record)
 
                     if records:
                         supabase_client.table("email_history").insert(records).execute()
-                        st.success(f"✅ Successful! {len(records)} naye records upload hue. ({skipped_count} duplicates skipped)")
+                        st.success(f"✅ Successful! {len(records)} records Supabase par sync ho gaye.")
                         st.rerun()
-                    else:
-                        st.info(f"ℹ️ Saare records pehle se Supabase me maujood hain. ({skipped_count} records skipped)")
                 else:
                     st.warning("⚠️ CSV file khali hai!")
             except Exception as e:
-                st.error(f"❌ Upload Error: {e}")
+                st.error(f"❌ Sync Error: {e}")
 
-# --- 3. FETCH DATA FROM SUPABASE / CSV ---
+# --- 3. FETCH DATA FROM SUPABASE / LOCAL CSV ---
 def load_history_data():
+    # Primary: Try Supabase
     if supabase_client:
         try:
             res = supabase_client.table("email_history").select("*").order("id", desc=True).execute()
@@ -108,16 +91,19 @@ def load_history_data():
                     "list_name": "List Name",
                     "recipient": "Recipient",
                     "subject": "Subject",
-                    "reason": "Reason"
+                    "reason": "Reason",
+                    "created_at": "Created At"
                 }
                 return df.rename(columns=cols_rename), "Supabase Cloud Database"
         except Exception as e:
-            st.warning(f"Supabase connection warning: {e}")
+            st.warning(f"Supabase fetch warning: {e}")
 
-    # Fallback to local CSV
+    # Fallback: Try Local CSV
     if os.path.exists(HISTORY_FILE):
         try:
-            return pd.read_csv(HISTORY_FILE), "Local CSV File"
+            csv_data = pd.read_csv(HISTORY_FILE)
+            if not csv_data.empty:
+                return csv_data, "Local CSV File"
         except Exception as e:
             st.error(f"CSV read error: {e}")
 
@@ -131,16 +117,14 @@ if df.empty:
     st.info("ℹ️ Koi history record nahi mila.")
 else:
     # Filter Controls
-    list_options = df["List Name"].unique().tolist() if "List Name" in df.columns else []
-    list_filter = st.multiselect(
-        "Filter by List Name:",
-        options=list_options,
-        default=list_options
-    )
-
-    filtered_df = df.copy()
-    if list_filter and "List Name" in filtered_df.columns:
-        filtered_df = filtered_df[filtered_df["List Name"].isin(list_filter)]
+    list_col = "List Name" if "List Name" in df.columns else ("list_name" if "list_name" in df.columns else None)
+    
+    if list_col:
+        list_options = df[list_col].dropna().unique().tolist()
+        list_filter = st.multiselect("Filter by List Name:", options=list_options, default=list_options)
+        filtered_df = df[df[list_col].isin(list_filter)]
+    else:
+        filtered_df = df.copy()
 
     # Metrics
     m1, m2 = st.columns(2)
@@ -149,8 +133,10 @@ else:
 
     st.divider()
 
-    display_cols = [col for col in ["created_at", "List Name", "Recipient", "Subject", "Reason"] if col in filtered_df.columns]
-    st.dataframe(filtered_df[display_cols], use_container_width=True)
+    # Display clean table
+    ignore_cols = ["id"]
+    display_df = filtered_df.drop(columns=[c for c in ignore_cols if c in filtered_df.columns])
+    st.dataframe(display_df, use_container_width=True)
 
     # Danger Zone
     st.divider()
@@ -161,7 +147,7 @@ else:
             if supabase_client:
                 try:
                     supabase_client.table("email_history").delete().gt("id", 0).execute()
-                except Exception as e:
+                except Exception:
                     pass
             st.success("✅ History Database & CSV clear ho gaya!")
             st.rerun()
