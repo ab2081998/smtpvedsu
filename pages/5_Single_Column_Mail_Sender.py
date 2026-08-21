@@ -153,7 +153,7 @@ def make_links_clickable(text):
     return text
 
 def convert_to_html(raw_text, is_rich_text=False):
-    """Preserves Quill HTML layout & formats plain text correctly."""
+    """Preserves Quill HTML layout & formats plain text correctly for Forced HTML rendering."""
     if not raw_text:
         return ""
 
@@ -165,12 +165,12 @@ def convert_to_html(raw_text, is_rich_text=False):
         for line in lines:
             line_str = line.strip()
             if not line_str:
-                formatted_lines.append("<br>")
+                formatted_lines.append("<br><br>")
             elif line_str.startswith("•") or line_str.startswith("-"):
                 clean_bullet = line_str.lstrip("•-").strip()
-                formatted_lines.append(f"<li style='margin-bottom: 6px;'>{make_links_clickable(clean_bullet)}</li>")
+                formatted_lines.append(f"<li style='margin-bottom: 8px;'>{make_links_clickable(clean_bullet)}</li>")
             else:
-                formatted_lines.append(f"<p style='margin: 0 0 12px 0;'>{make_links_clickable(line_str)}</p>")
+                formatted_lines.append(f"<p style='margin-bottom: 12px; line-height: 1.6;'>{make_links_clickable(line_str)}</p>")
         body_content = "".join(formatted_lines)
 
     return f"""<!DOCTYPE html>
@@ -179,14 +179,42 @@ def convert_to_html(raw_text, is_rich_text=False):
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
-        body {{ font-family: Arial, sans-serif; font-size: 14px; color: #222222; line-height: 1.6; margin: 0; padding: 15px; }}
-        h1, h2, h3, h4 {{ color: #111111; margin-top: 15px; margin-bottom: 10px; }}
-        p {{ margin-bottom: 12px; }}
-        ul, ol {{ margin-top: 5px; margin-bottom: 15px; padding-left: 20px; }}
-        li {{ margin-bottom: 6px; }}
-        a {{ color: #0066cc; text-decoration: underline; }}
-        b, strong {{ font-weight: bold; }}
-        i, em {{ font-style: italic; }}
+        body {{
+            font-family: Arial, sans-serif;
+            font-size: 14px;
+            color: #222222;
+            line-height: 1.6;
+            margin: 0;
+            padding: 15px;
+        }}
+        h1, h2, h3, h4 {{
+            color: #111111;
+            margin-top: 15px;
+            margin-bottom: 10px;
+        }}
+        p {{
+            margin-bottom: 12px;
+            line-height: 1.6;
+        }}
+        ul, ol {{
+            margin-top: 5px;
+            margin-bottom: 15px;
+            padding-left: 20px;
+        }}
+        li {{
+            margin-bottom: 8px;
+            line-height: 1.6;
+        }}
+        a {{
+            color: #0066cc;
+            text-decoration: underline;
+        }}
+        b, strong {{
+            font-weight: bold;
+        }}
+        i, em {{
+            font-style: italic;
+        }}
     </style>
 </head>
 <body>
@@ -364,16 +392,12 @@ if st.button("🚀 Start Campaign", type="primary", use_container_width=True):
         error_reason = "Success"
 
         try:
-            msg = MIMEMultipart("alternative")
+            # DIRECT FORCED HTML VIA 'related' MIME STRUCTURE
+            msg = MIMEMultipart("related")
             msg["From"] = formataddr((active_sender_name, sender_email))
             msg["To"] = email
             msg["Subject"] = subject_template
 
-            # Plain text fallback strip karke generate karein
-            plain_text_fallback = re.sub(r'<[^>]+>', '', html_formatted_body)
-
-            # Pehle Plain Text attach karein, uske baad HTML attach karein
-            msg.attach(MIMEText(plain_text_fallback, "plain", "utf-8"))
             msg.attach(MIMEText(html_formatted_body, "html", "utf-8"))
 
             server = smtplib.SMTP(active_host, active_port, timeout=15)
