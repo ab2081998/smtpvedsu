@@ -125,21 +125,10 @@ def parse_credentials(text):
             )
     return creds
 
-def get_dynamic_senders(manual_text=""):
+def get_dynamic_senders():
     senders = []
-    # Priority 1: Manual text input
-    if manual_text.strip():
-        senders = parse_credentials(manual_text)
-        if senders:
-            return senders, "Manual Text Area"
-
-    # Priority 2: secrets.toml (SMTP_SENDERS string)
-    if "SMTP_SENDERS" in st.secrets:
-        senders = parse_credentials(st.secrets["SMTP_SENDERS"])
-        if senders:
-            return senders, "secrets.toml (SMTP_SENDERS)"
-
-    # Priority 3: secrets.toml ([smtp_accounts.*] format)
+    
+    # Priority 1: secrets.toml ([smtp_accounts.*] format)
     if "smtp_accounts" in st.secrets:
         smtp_accs = st.secrets["smtp_accounts"]
         for acc_key in smtp_accs:
@@ -148,23 +137,38 @@ def get_dynamic_senders(manual_text=""):
             pw = acc.get("pass") or acc.get("password")
             if em and pw:
                 senders.append({
+                    "name": acc.get("name", acc_key),
                     "email": str(em).strip(),
                     "password": str(pw).strip(),
-                    "server": acc.get("server"),
-                    "port": acc.get("port")
+                    "server": acc.get("server", "smtp.gmail.com"),
+                    "port": acc.get("port", 587)
                 })
-        if senders:
-            return senders, "secrets.toml ([smtp_accounts])"
 
-    # Priority 4: secrets.toml (smtp.accounts format)
-    if "smtp" in st.secrets and "accounts" in st.secrets["smtp"]:
-        for acc in st.secrets["smtp"]["accounts"]:
+    # Priority 2: secrets.toml (SMTP_SENDERS string format)
+    if not senders and "SMTP_SENDERS" in st.secrets:
+        parsed = parse_credentials(st.secrets["SMTP_SENDERS"])
+        for idx, item in enumerate(parsed):
+            senders.append({
+                "name": f"Account {idx+1}",
+                "email": item["email"],
+                "password": item["password"],
+                "server": "smtp.gmail.com",
+                "port": 587
+            })
+
+    # Priority 3: secrets.toml (smtp.accounts format)
+    if not senders and "smtp" in st.secrets and "accounts" in st.secrets["smtp"]:
+        for idx, acc in enumerate(st.secrets["smtp"]["accounts"]):
             if "email" in acc and "password" in acc:
-                senders.append({"email": str(acc["email"]).strip(), "password": str(acc["password"]).strip()})
-        if senders:
-            return senders, "secrets.toml (smtp.accounts)"
+                senders.append({
+                    "name": acc.get("name", f"Account {idx+1}"),
+                    "email": str(acc["email"]).strip(),
+                    "password": str(acc["password"]).strip(),
+                    "server": acc.get("server", "smtp.gmail.com"),
+                    "port": acc.get("port", 587)
+                })
 
-    return [], "None"
+    return senders
 
 st.title("📧 Single Column Campaign Sender (With Auto Resume)")
 
@@ -172,20 +176,47 @@ col_left, col_right = st.columns(2)
 
 with col_left:
     st.subheader("1. SMTP Senders Setup")
-    smtp_host = st.text_input("SMTP Server", value="smtp.gmail.com")
-    smtp_port = st.number_input("SMTP Port", value=587, step=1)
     
+    available_senders = get_dynamic_senders()
+    selected_senders = []
+    
+    if available_senders:
+        account_options = ["All Accounts (Round Robin)"] + [
+            f"{acc['name']} ({acc['email']})" for acc in available_senders
+        ]
+        
+        chosen_acc = st.selectbox(
+            "Select Account from TOML",
+            options=account_options,
+            index=0
+        )
+        
+        if chosen_acc == "All Accounts (Round Robin)":
+            selected_senders = available_senders
+            st.success(f"✅ Selected all {len(available_senders)} accounts for Round Robin")
+        else:
+            selected_acc_email = chosen_acc.split("(")[-1].replace(")", "").strip()
+            selected_senders = [
+                acc for acc in available_senders if acc["email"] == selected_acc_email
+            ]
+            st.success(f"✅ Selected: {selected_senders[0]['email']}")
+    else:
+        st.warning("⚠️ No secrets.toml accounts found! Enter manually below:")
+
     sender_text = st.text_area(
-        "Sender Accounts (Optional: leave empty to auto-load from secrets.toml)",
-        height=150,
-        placeholder="email:password or email,password\n(If empty, system auto-fetches from TOML)"
+        "Or Enter Manual Sender Accounts",
+        height=100,
+        placeholder="email:password or email,password"
     )
     
-    senders, source_used = get_dynamic_senders(sender_text)
-    if senders:
-        st.success(f"✅ Loaded {len(senders)} senders automatically from: **{source_used}**")
-    else:
-        st.warning("⚠️ No senders found in Manual Input or secrets.toml!")
+    if sender_text.strip():
+        selected_senders = parse_credentials(sender_text)
+
+    default_host = selected_senders[0].get("server", "smtp.gmail.com") if selected_senders else "smtp.gmail.com"
+    default_port = int(selected_senders[0].get("port", 587)) if selected_senders else 587
+    
+    smtp_host = st.text_input("SMTP Server", value=default_host)
+    smtp_port = st.number_input("SMTP Port", value=default_port, step=1)
 
 with col_right:
     st.subheader("2. Recipient Data Setup")
@@ -229,8 +260,8 @@ with st.expander("⚙️ Advanced Settings & Resume Options"):
 st.divider()
 
 if st.button("🚀 Start Campaign", type="primary", use_container_width=True):
-    if not senders:
-        st.error("❌ Sender accounts enter karein ya secrets.toml setup karein!")
+    if not selected_senders:
+        st.error("❌ Select an account or enter credentials manually!")
         st.stop()
 
     if recipient_df.empty:
@@ -267,7 +298,7 @@ if st.button("🚀 Start Campaign", type="primary", use_container_width=True):
 
     total_recipients = len(recipient_df)
     sender_index = 0
-    total_senders = len(senders)
+    total_senders = len(selected_senders)
 
     for idx, row in recipient_df.iterrows():
         email = ""
@@ -284,11 +315,10 @@ if st.button("🚀 Start Campaign", type="primary", use_container_width=True):
             progress_bar.progress((idx + 1) / total_recipients)
             continue
 
-        curr_sender = senders[sender_index % total_senders]
+        curr_sender = selected_senders[sender_index % total_senders]
         sender_email = curr_sender["email"]
         sender_pass = curr_sender["password"]
         
-        # TOML account config override if present
         active_host = curr_sender.get("server") or smtp_host
         active_port = int(curr_sender.get("port") or smtp_port)
         
