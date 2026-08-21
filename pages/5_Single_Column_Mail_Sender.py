@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import formataddr
@@ -11,167 +11,108 @@ import pandas as pd
 import streamlit as st
 from streamlit_quill import st_quill
 
-# --- 0. AUTHENTICATION & PATH SETUP ---
-if "authenticated" not in st.session_state:
-    st.session_state["authenticated"] = False
-
+# --- 0. AUTHENTICATION & SESSION CHECK ---
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if parent_dir not in sys.path:
     sys.path.append(parent_dir)
+import auth
 
-HISTORY_FILE = os.path.abspath(os.path.join(parent_dir, "email_history.csv"))
+# Force Authentication Check via auth.py
+if hasattr(auth, "require_auth"):
+    auth.require_auth()
+elif hasattr(auth, "check_auth"):
+    auth.check_auth()
 
-try:
-    import auth
-    if hasattr(auth, "require_auth"):
-        auth.require_auth()
-    elif hasattr(auth, "check_auth"):
-        auth.check_auth()
-    else:
-        if not st.session_state["authenticated"]:
-            st.warning("🔒 Access Restricted! Please enter password.")
-            user_pass = st.text_input(
-                "Please enter Password",
-                type="password",
-                key="p5_auth_pass_input",
-            )
-            CORRECT_PASSWORD = st.secrets.get("PASSWORD", "root")
-            if st.button("Unlock Page"):
-                if user_pass == CORRECT_PASSWORD:
-                    st.session_state["authenticated"] = True
-                    st.success("✅ Password correct!")
-                    st.rerun()
-                else:
-                    st.error("❌ Incorrect password!")
-                    st.stop()
-except ImportError:
-    if not st.session_state["authenticated"]:
-        st.warning("🔒 Access Restricted! Please enter password.")
-        user_pass = st.text_input(
-            "Please enter Password",
-            type="password",
-            key="p5_auth_pass_input",
-        )
-        CORRECT_PASSWORD = st.secrets.get("PASSWORD", "root")
-        if st.button("Unlock Page"):
-            if user_pass == CORRECT_PASSWORD:
-                st.session_state["authenticated"] = True
-                st.success("✅ Password correct!")
-                st.rerun()
-            else:
-                st.error("❌ Incorrect password!")
-                st.stop()
+# Fallback session check with password unlock input
+if not st.session_state.get("authenticated", False):
+    st.subheader("🔒 Page Locked")
+    password_input = st.text_input("Enter password to unlock page:", type="password")
+    correct_password = st.secrets.get("APP_PASSWORD", "admin123")
+    if st.button("Unlock"):
+        if password_input == correct_password:
+            st.session_state["authenticated"] = True
+            st.success("Unlocked successfully!")
+            st.rerun()
+        else:
+            st.error("Incorrect password. Please try again.")
+    st.stop()
 
-# --- 1. HISTORY & RETENTION HELPERS ---
-def clean_and_load_history():
-    if not os.path.exists(HISTORY_FILE) or os.path.getsize(HISTORY_FILE) == 0:
-        return pd.DataFrame()
-    try:
-        df = pd.read_csv(HISTORY_FILE, on_bad_lines="skip", engine="python")
-        if df.empty:
-            return pd.DataFrame()
-        df.columns = df.columns.str.strip()
-        if "Timestamp" in df.columns:
-            df["Parsed_Time"] = pd.to_datetime(df["Timestamp"], errors="coerce")
-            df = df.dropna(subset=["Parsed_Time"])
-            cutoff_time = datetime.now() - timedelta(hours=48)
-            recent_df = df[df["Parsed_Time"] >= cutoff_time].copy()
-            if len(recent_df) < len(df):
-                save_df = recent_df.drop(columns=["Parsed_Time"])
-                save_df.to_csv(HISTORY_FILE, index=False, encoding="utf-8")
-                return recent_df.drop(columns=["Parsed_Time"])
-            return df
-    except Exception:
-        return pd.DataFrame()
+# --- 1. SECRETS SE MULTI-SMTP ACCOUNTS FETCH KARNA ---
+smtp_secrets = st.secrets.get("smtp_accounts", {})
+if "smtp_profiles" not in st.session_state:
+    st.session_state["smtp_profiles"] = {}
 
-def save_to_history(log_entry):
-    try:
-        log_df = pd.DataFrame([log_entry])
-        file_exists = (
-            os.path.exists(HISTORY_FILE) and os.path.getsize(HISTORY_FILE) > 0
-        )
-        log_df.to_csv(
-            HISTORY_FILE,
-            mode="a",
-            header=not file_exists,
-            index=False,
-            encoding="utf-8",
-        )
-    except Exception as err:
-        st.error(f"⚠️ History write error: {err}")
+# secrets.toml mein [smtp_accounts.xxx] format load karein
+if smtp_secrets:
+    for acc_key, acc_data in smtp_secrets.items():
+        profile_label = acc_data.get("name", acc_key.title())
+        st.session_state["smtp_profiles"][profile_label] = {
+            "email": str(acc_data.get("email", "")),
+            "user": str(acc_data.get("user", "")),
+            "pass": str(acc_data.get("pass", "")),
+            "server": str(acc_data.get("server", "")),
+            "port": int(acc_data.get("port", 587)),
+            "name": str(acc_data.get("name", "")),
+        }
 
-def get_dynamic_senders():
-    senders = []
-    if "smtp_accounts" in st.secrets:
-        smtp_accs = st.secrets["smtp_accounts"]
-        for acc_key in smtp_accs:
-            acc = smtp_accs[acc_key]
-            em = acc.get("email")
-            pw = acc.get("pass") or acc.get("password")
-            if em and pw:
-                clean_pw = str(pw).strip().strip('"').strip("'").replace(" ", "")
-                smtp_user = str(acc.get("user") or em).strip()
-                
-                senders.append({
-                    "name": str(acc.get("name", acc_key)).strip(),
-                    "email": str(em).strip(),
-                    "user": smtp_user,
-                    "password": clean_pw,
-                    "server": str(acc.get("server", "smtp.resend.com")).strip(),
-                    "port": int(acc.get("port", 587))
-                })
+# Fallback: Agar purani single DEFAULT_SMTP_ keys ho
+if not st.session_state["smtp_profiles"]:
+    DEF_EMAIL = st.secrets.get("DEFAULT_SMTP_EMAIL", "")
+    DEF_USER = st.secrets.get("DEFAULT_SMTP_USER", "")
+    DEF_PASS = st.secrets.get("DEFAULT_SMTP_PASS", "")
+    DEF_SERVER = st.secrets.get("DEFAULT_SMTP_SERVER", "smtp.resend.com")
+    DEF_PORT = st.secrets.get("DEFAULT_SMTP_PORT", 587)
+    DEF_NAME = st.secrets.get("DEFAULT_SMTP_NAME", "Bulk Mailer")
 
-    if not senders and "smtp" in st.secrets and "accounts" in st.secrets["smtp"]:
-        for idx, acc in enumerate(st.secrets["smtp"]["accounts"]):
-            if "email" in acc and "password" in acc:
-                clean_pw = str(acc["password"]).strip().strip('"').strip("'").replace(" ", "")
-                em = str(acc["email"]).strip()
-                smtp_user = str(acc.get("user") or em).strip()
-                senders.append({
-                    "name": str(acc.get("name", f"Account {idx+1}")).strip(),
-                    "email": em,
-                    "user": smtp_user,
-                    "password": clean_pw,
-                    "server": str(acc.get("server", "smtp.resend.com")).strip(),
-                    "port": int(acc.get("port", 587))
-                })
+    st.session_state["smtp_profiles"]["Default Profile"] = {
+        "email": DEF_EMAIL,
+        "user": DEF_USER,
+        "pass": DEF_PASS,
+        "server": DEF_SERVER,
+        "port": DEF_PORT,
+        "name": DEF_NAME,
+    }
 
-    return senders
+# Initial Session Credentials set karein
+first_profile = list(st.session_state["smtp_profiles"].values())[0]
+if "smtp_email" not in st.session_state:
+    st.session_state["smtp_email"] = first_profile["email"]
+if "smtp_user" not in st.session_state:
+    st.session_state["smtp_user"] = first_profile["user"]
+if "smtp_password" not in st.session_state:
+    st.session_state["smtp_password"] = first_profile["pass"]
+if "smtp_server" not in st.session_state:
+    st.session_state["smtp_server"] = first_profile["server"]
+if "smtp_port" not in st.session_state:
+    st.session_state["smtp_port"] = first_profile["port"]
+if "smtp_name" not in st.session_state:
+    st.session_state["smtp_name"] = first_profile["name"]
 
-def make_links_clickable(text):
-    if not text:
+# PROPER HTML TEMPLATE FOR CS / INVITATIONS
+DEFAULT_TEMPLATE = """<p>Hi {Name},</p>
+<p>I hope this email finds you well.</p>
+<p>Write your message here...</p>
+<br>
+<p style="margin-top: 15px; color: #555555; line-height: 1.6;">
+    <strong>WebinarBrite</strong><br>
+    2438 Industrial Blvd #1003, Abilene, TX 79605, United States<br>
+    Need assistance? <a href="mailto:cs@webinarbrite.com" style="color: #0066cc; text-decoration: underline;">cs@webinarbrite.com</a><br>
+    If you do not wish to receive future webinar invites, please <a href="https://webinarbrite.com/unsubscribe" style="color: #0066cc; text-decoration: underline;">Unsubscribe Here</a>
+</p>"""
+
+if "editor_text" not in st.session_state:
+    st.session_state["editor_text"] = DEFAULT_TEMPLATE
+
+# --- HTML FORMATTER FUNCTION (PRESERVES SPACING & BULLETS) ---
+def build_bulletproof_html(raw_html_or_text):
+    if not raw_html_or_text:
         return ""
-    email_pattern = r'(?<!href="mailto:)(?<!href=")(?<!">)([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)(?![^<]*>)'
-    text = re.sub(email_pattern, r'<a href="mailto:\1" style="color: #0066cc; text-decoration: underline;">\1</a>', text)
-
-    url_pattern = r'(?<!href=")(?<!src=")(https?://[^\s<"]+)(?![^<]*>)'
-    text = re.sub(url_pattern, r'<a href="\1" target="_blank" style="color: #0066cc; text-decoration: underline;">\1</a>', text)
-
-    www_pattern = r'(?<!href=")(?<!https://)(?<!http://)(www\.[^\s<"]+)(?![^<]*>)'
-    text = re.sub(www_pattern, r'<a href="https://\1" target="_blank" style="color: #0066cc; text-decoration: underline;">\1</a>', text)
-
-    return text
-
-def convert_to_html(raw_text, is_rich_text=False):
-    """Preserves Quill HTML layout & formats plain text correctly for Forced HTML rendering."""
-    if not raw_text:
-        return ""
-
-    if is_rich_text:
-        body_content = raw_text
+    
+    # Agar raw lines hain (not quill HTML), convert \n to <br>
+    if "<p>" not in raw_html_or_text and "<div>" not in raw_html_or_text:
+        formatted_content = raw_html_or_text.replace("\n", "<br>")
     else:
-        lines = raw_text.split("\n")
-        formatted_lines = []
-        for line in lines:
-            line_str = line.strip()
-            if not line_str:
-                formatted_lines.append("<br><br>")
-            elif line_str.startswith("•") or line_str.startswith("-"):
-                clean_bullet = line_str.lstrip("•-").strip()
-                formatted_lines.append(f"<li style='margin-bottom: 8px;'>{make_links_clickable(clean_bullet)}</li>")
-            else:
-                formatted_lines.append(f"<p style='margin-bottom: 12px; line-height: 1.6;'>{make_links_clickable(line_str)}</p>")
-        body_content = "".join(formatted_lines)
+        formatted_content = raw_html_or_text
 
     return f"""<!DOCTYPE html>
 <html>
@@ -187,14 +128,15 @@ def convert_to_html(raw_text, is_rich_text=False):
             margin: 0;
             padding: 15px;
         }}
+        p {{
+            margin-top: 0px;
+            margin-bottom: 12px;
+            line-height: 1.6;
+        }}
         h1, h2, h3, h4 {{
             color: #111111;
             margin-top: 15px;
             margin-bottom: 10px;
-        }}
-        p {{
-            margin-bottom: 12px;
-            line-height: 1.6;
         }}
         ul, ol {{
             margin-top: 5px;
@@ -202,7 +144,7 @@ def convert_to_html(raw_text, is_rich_text=False):
             padding-left: 20px;
         }}
         li {{
-            margin-bottom: 8px;
+            margin-bottom: 6px;
             line-height: 1.6;
         }}
         a {{
@@ -218,237 +160,387 @@ def convert_to_html(raw_text, is_rich_text=False):
     </style>
 </head>
 <body>
-    {body_content}
+    {formatted_content}
 </body>
 </html>"""
 
-# --- 2. MAIN APP UI ---
-st.title("📧 Single Column Email Campaign Sender")
+# --- 2. MULTI-SMTP SIDEBAR CONFIG ---
+with st.sidebar:
+    st.divider()
+    st.markdown("**⚙️ SMTP Configurations**")
 
-col_left, col_right = st.columns(2)
+    profile_names = list(st.session_state["smtp_profiles"].keys())
+    selected_profile_name = st.selectbox(
+        "Select Active SMTP Profile:", options=profile_names
+    )
+    selected_profile = st.session_state["smtp_profiles"][selected_profile_name]
 
-with col_left:
-    st.subheader("1. SMTP Sender Selection")
-    
-    available_senders = get_dynamic_senders()
-    selected_senders = []
-    
-    if available_senders:
-        account_options = ["All Accounts (Round Robin)"] + [
-            f"{acc['name']} ({acc['email']})" for acc in available_senders
-        ]
-        
-        chosen_acc = st.selectbox(
-            "Select Account from TOML",
-            options=account_options,
-            index=0
-        )
-        
-        if chosen_acc == "All Accounts (Round Robin)":
-            selected_senders = available_senders
-            st.success(f"✅ Selected all {len(available_senders)} accounts for Round Robin")
-        else:
-            selected_acc_email = chosen_acc.split("(")[-1].replace(")", "").strip()
-            selected_senders = [
-                acc for acc in available_senders if acc["email"] == selected_acc_email
-            ]
-            st.success(f"✅ Selected: {selected_senders[0]['email']}")
-    else:
-        st.error("❌ No valid accounts found in secrets.toml!")
-
-with col_right:
-    st.subheader("2. Recipient Data (Single Column)")
-    recipients_file = st.file_uploader(
-        "Upload CSV/Excel (Single Column Email File)", type=["csv", "xlsx"]
+    profile_save_name = st.text_input(
+        "Save As Profile Name:", value=selected_profile_name
     )
 
-    recipient_emails = []
-    list_name = "Single_Col_Campaign"
-    
-    if recipients_file:
-        list_name = os.path.splitext(recipients_file.name)[0]
-        try:
-            if recipients_file.name.endswith(".csv"):
-                df_raw = pd.read_csv(recipients_file, header=None)
-            else:
-                df_raw = pd.read_excel(recipients_file, header=None)
-            
-            first_col_vals = df_raw.iloc[:, 0].astype(str).tolist()
-            for val in first_col_vals:
-                cleaned_val = val.strip()
-                if "@" in cleaned_val and "." in cleaned_val:
-                    match = re.search(r"[\w\.-]+@[\w\.-]+\.\w+", cleaned_val)
-                    if match:
-                        recipient_emails.append(match.group(0))
-            
-            st.success(f"✅ Loaded {len(recipient_emails)} emails from file '{list_name}'")
-        except Exception as e:
-            st.error(f"❌ File read error: {e}")
+    button_container = st.container()
+
+    st.markdown("---")
+    s_email = st.text_input("Sender Email (From):", value=selected_profile["email"])
+    s_user = st.text_input("SMTP Username:", value=selected_profile["user"])
+    s_pass = st.text_input(
+        "App Password / API Key:",
+        value=selected_profile["pass"],
+        type="password",
+    )
+    s_server = st.text_input("SMTP Server:", value=selected_profile["server"])
+    s_port = st.number_input(
+        "SMTP Port:", value=int(selected_profile["port"]), step=1
+    )
+    s_name = st.text_input("Sender Name:", value=selected_profile["name"])
+
+    with button_container:
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("💾 Save Profile", type="primary", use_container_width=True):
+                p_name = profile_save_name.strip() or "Custom Profile"
+                st.session_state["smtp_profiles"][p_name] = {
+                    "email": s_email.strip(),
+                    "user": s_user.strip(),
+                    "pass": s_pass.strip(),
+                    "server": s_server.strip(),
+                    "port": s_port,
+                    "name": s_name.strip(),
+                }
+                st.session_state["smtp_email"] = s_email.strip()
+                st.session_state["smtp_user"] = s_user.strip()
+                st.session_state["smtp_password"] = s_pass.strip()
+                st.session_state["smtp_server"] = s_server.strip()
+                st.session_state["smtp_port"] = s_port
+                st.session_state["smtp_name"] = s_name.strip()
+                st.success(f"✅ Profile '{p_name}' Saved!")
+                st.rerun()
+        with col2:
+            if st.button("🔄 Reset Profile", use_container_width=True):
+                st.session_state["smtp_email"] = selected_profile["email"]
+                st.session_state["smtp_user"] = selected_profile["user"]
+                st.session_state["smtp_password"] = selected_profile["pass"]
+                st.session_state["smtp_server"] = selected_profile["server"]
+                st.session_state["smtp_port"] = selected_profile["port"]
+                st.session_state["smtp_name"] = selected_profile["name"]
+                st.info("🔄 Restored Selected Profile Defaults!")
+                st.rerun()
+
+    st.divider()
+    if st.button("🚪 Logout App"):
+        st.session_state["authenticated"] = False
+        st.success("👋 Logged out!")
+        st.rerun()
+
+# --- 3. MAIN UI ---
+st.markdown("**📢 Single Column Mail Sender (Email Only)**")
+st.caption("Send emails directly using a CSV containing only Email addresses.")
+
+st.session_state["smtp_email"] = s_email.strip()
+st.session_state["smtp_user"] = s_user.strip()
+st.session_state["smtp_password"] = s_pass.strip()
+st.session_state["smtp_server"] = s_server.strip()
+st.session_state["smtp_port"] = s_port
+st.session_state["smtp_name"] = s_name.strip()
+
+if st.session_state["smtp_email"]:
+    st.info(
+        f"📧 **Active Profile ({selected_profile_name}):** `{st.session_state['smtp_name']} <{st.session_state['smtp_email']}>` "
+        f"| Login User: `{st.session_state['smtp_user'] or st.session_state['smtp_email']}` "
+        f"({st.session_state['smtp_server']}:{st.session_state['smtp_port']})"
+    )
+else:
+    st.warning("⚠️ Pehle Sidebar me SMTP Details save karein ya secrets.toml setup karein!")
+    st.stop()
+
+# --- STEP A: CSV UPLOAD ---
+st.markdown("**1. Upload CSV File**")
+uploaded_file = st.file_uploader(
+    "Upload CSV file (Containing Email column):",
+    type=["csv"],
+    key="single_col_csv_file_uploader",
+)
+
+df = None
+email_col = None
+
+if uploaded_file is not None:
+    try:
+        df = pd.read_csv(uploaded_file)
+        df.columns = df.columns.str.strip()
+        if len(df.columns) < 1:
+            st.error("❌ CSV file khali lag rahi hai!")
+            df = None
+        else:
+            email_col = df.columns[0]
+            for col in df.columns:
+                if col.lower() == "email":
+                    email_col = col
+                    break
+            st.success(f"✅ CSV Loaded! Total Records: {len(df)}")
+            st.info(f"📌 **Selected Email Column:** `{email_col}`")
+            st.dataframe(df.head(5), use_container_width=True)
+    except Exception as e:
+        st.error(f"Error reading CSV file: {e}")
 
 st.divider()
 
-# --- Campaign Message Setup ---
-st.subheader("3. Campaign Message Setup")
+# --- STEP B: EMAIL CONTENT ---
+st.markdown("**2. Email Content**")
 
-subject_template = st.text_input(
-    "Subject Line", value="Important Update"
-)
+subject_input = st.text_input("Email Subject:", value="Important Announcement")
 
-editor_mode = st.radio(
-    "Select Editor Mode:",
-    ["Plain / Standard Text Input", "Rich Text Editor (Quill)"],
+# TEXT EDITOR SWITCHER (FIXED EDITOR FORMATTING)
+editor_type = st.radio(
+    "Select Editor Style:",
+    ["Rich Text Editor (Quill)", "Plain Text / Standard Editor"],
     horizontal=True
 )
 
-if editor_mode == "Plain / Standard Text Input":
-    email_body = st.text_area(
-        "Email Body",
-        value="Credentialing 101: A Detailed Guide to Provider Credentialing...\n\nKey Takeaways:\n• Understand the complete provider credentialing process\n• Identify key terms (NPI, CAQH, PECOS)\n\nReserve Your Spot: https://www.webinarbrite.com",
-        height=280
+if editor_type == "Rich Text Editor (Quill)":
+    quill_res = st_quill(
+        value=st.session_state["editor_text"], 
+        html=True, 
+        key="quill_editor_fixed"
     )
+    active_body = quill_res if (quill_res and quill_res != "") else st.session_state["editor_text"]
 else:
-    email_body = st_quill(
-        placeholder="Type or paste your formatted content with bullets, bold, headers...",
-        key="single_col_quill"
+    active_body = st.text_area(
+        "Edit Plain/HTML Template:",
+        value=st.session_state["editor_text"],
+        height=250
     )
 
-with st.expander("⚙️ Advanced Settings & Resume Options"):
-    delay_between_mails = st.number_input(
-        "Delay Between Emails (seconds)", value=2, min_value=0
+# Save Template aur Test Mail Toolbar
+col_save, col_test_input, col_test_btn = st.columns([1.5, 2.5, 1])
+
+with col_save:
+    if st.button("💾 Save Template / Content", use_container_width=True):
+        st.session_state["editor_text"] = active_body
+        st.success("✅ Content Saved!")
+
+with col_test_input:
+    test_recipient = st.text_input(
+        "Test Email To:", 
+        placeholder="recipient@example.com", 
+        label_visibility="collapsed"
     )
-    enable_auto_resume = st.checkbox(
-        "Auto-Skip Emails Sent in Last 48 Hours", value=True
-    )
+
+with col_test_btn:
+    send_test_btn = st.button("🧪 Send Test Mail", type="primary", use_container_width=True)
+
+# Test Email Execution Block
+if send_test_btn:
+    if not test_recipient or "@" not in test_recipient:
+        st.error("❌ Valid recipient email address dalein!")
+    else:
+        sender_email = st.session_state["smtp_email"]
+        smtp_username = st.session_state["smtp_user"] or sender_email
+        sender_password = st.session_state["smtp_password"]
+        smtp_server = st.session_state["smtp_server"]
+        smtp_port = st.session_state["smtp_port"]
+        sender_name = st.session_state["smtp_name"]
+        
+        test_subject = f"[TEST] {subject_input}"
+        test_body = active_body.replace("{Name}", "Test User")
+
+        try:
+            # FIX: Forced HTML Rendering using "related" MIME structure
+            msg = MIMEMultipart("related")
+            msg["From"] = formataddr((sender_name, sender_email))
+            msg["To"] = test_recipient
+            msg["Subject"] = test_subject
+
+            clean_formatted_html = build_bulletproof_html(test_body)
+            msg.attach(MIMEText(clean_formatted_html, "html", "utf-8"))
+
+            if int(smtp_port) == 465:
+                with smtplib.SMTP_SSL(smtp_server, int(smtp_port), timeout=15) as server:
+                    server.login(smtp_username, sender_password)
+                    server.sendmail(sender_email, test_recipient, msg.as_string())
+            else:
+                with smtplib.SMTP(smtp_server, int(smtp_port), timeout=15) as server:
+                    server.starttls()
+                    server.login(smtp_username, sender_password)
+                    server.sendmail(sender_email, test_recipient, msg.as_string())
+
+            st.success(f"✅ Test email successfully sent to `{test_recipient}`!")
+
+        except Exception as e:
+            st.error(f"❌ Failed to send Test Email: {str(e)}")
 
 st.divider()
 
-if st.button("🚀 Start Campaign", type="primary", use_container_width=True):
-    if not selected_senders:
-        st.error("❌ Please setup valid accounts in secrets.toml!")
+# --- STEP C: BULK SENDING LOGIC WITH AUTO-RESUME & RETRY ---
+st.markdown("**3. Start Bulk Campaign**")
+
+notification_box = st.container()
+FALLBACK_NAME = "there"
+HISTORY_FILE = "email_history.csv"
+
+if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
+    if df is None or len(df) == 0:
+        st.error("❌ Valid CSV File upload karein!")
         st.stop()
 
-    if not recipient_emails:
-        st.error("❌ Please upload a valid CSV file containing email addresses!")
-        st.stop()
+    sender_email = st.session_state["smtp_email"]
+    smtp_username = st.session_state["smtp_user"] or sender_email
+    sender_password = st.session_state["smtp_password"]
+    smtp_server = st.session_state["smtp_server"]
+    smtp_port = st.session_state["smtp_port"]
+    sender_name = st.session_state["smtp_name"]
 
-    if not email_body or not email_body.strip():
-        st.error("❌ Email Body khali nahi ho sakta!")
-        st.stop()
-
-    is_rich = (editor_mode == "Rich Text Editor (Quill)")
-    html_formatted_body = convert_to_html(email_body, is_rich_text=is_rich)
+    total_records = len(df)
+    current_body = active_body
 
     already_sent_emails = set()
-    if enable_auto_resume:
-        history_df = clean_and_load_history()
-        if not history_df.empty and "Recipient" in history_df.columns:
-            if "Status" in history_df.columns:
-                sent_mask = history_df["Status"].str.contains(
-                    "Sent|✅", case=False, na=False
-                )
+    if os.path.exists(HISTORY_FILE):
+        try:
+            history_df = pd.read_csv(HISTORY_FILE)
+            if "Recipient" in history_df.columns and "Status" in history_df.columns:
                 already_sent_emails = set(
-                    history_df[sent_mask]["Recipient"]
-                    .dropna()
+                    history_df[history_df["Status"] == "Sent ✅"]["Recipient"]
+                    .astype(str)
                     .str.strip()
                     .str.lower()
                 )
-            else:
-                already_sent_emails = set(
-                    history_df["Recipient"].dropna().str.strip().str.lower()
-                )
-
-        if already_sent_emails:
-            st.info(
-                f"ℹ️ Auto-Resume Active: Pichle 48 hours me {len(already_sent_emails)} emails sent ho chuke hain. Unhe skip kiya jayega."
-            )
-
-    progress_bar = st.progress(0)
-    logs_container = st.container()
-
-    total_recipients = len(recipient_emails)
-    sender_index = 0
-    total_senders = len(selected_senders)
-
-    for idx, email in enumerate(recipient_emails):
-
-        if enable_auto_resume and email.lower() in already_sent_emails:
-            with logs_container:
-                st.write(f"⏭️ Skipped (Already sent in last 48h): {email}")
-            progress_bar.progress((idx + 1) / total_recipients)
-            continue
-
-        curr_sender = selected_senders[sender_index % total_senders]
-        sender_email = curr_sender["email"]
-        smtp_login_user = curr_sender["user"]
-        sender_pass = curr_sender["password"]
-        active_host = curr_sender["server"]
-        active_port = curr_sender["port"]
-        active_sender_name = curr_sender["name"]
-
-        sender_index += 1
-
-        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        is_success = False
-        error_reason = "Success"
-
-        try:
-            # DIRECT FORCED HTML VIA 'related' MIME STRUCTURE
-            msg = MIMEMultipart("related")
-            msg["From"] = formataddr((active_sender_name, sender_email))
-            msg["To"] = email
-            msg["Subject"] = subject_template
-
-            msg.attach(MIMEText(html_formatted_body, "html", "utf-8"))
-
-            server = smtplib.SMTP(active_host, active_port, timeout=15)
-            server.starttls()
-            server.login(smtp_login_user, sender_pass)
-            server.sendmail(sender_email, email, msg.as_string())
-            server.quit()
-
-            is_success = True
-            with logs_container:
-                st.success(f"✅ Sent to: {email} via {sender_email}")
         except Exception as e:
-            error_reason = str(e)
-            with logs_container:
-                st.error(f"❌ Failed for {email}: {error_reason}")
+            st.warning(f"History load nahi ho saki: {e}")
 
-        log_entry = {
-            "Timestamp": now_str,
-            "List Name": list_name,
-            "Sender": sender_email,
-            "Recipient": email,
-            "Subject": subject_template,
-            "Status": "Sent ✅" if is_success else "Failed ❌",
-            "Reason": error_reason,
-        }
-        save_to_history(log_entry)
+    with notification_box:
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        success_count = 0
+        failed_count = 0
+        skipped_count = 0
+        logs = []
 
-        progress_bar.progress((idx + 1) / total_recipients)
-        if delay_between_mails > 0:
-            time.sleep(delay_between_mails)
+        for index, row in df.iterrows():
+            recipient_email = (
+                str(row[email_col]).strip() if pd.notna(row[email_col]) else ""
+            )
+            now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    st.success("🎉 Campaign execution complete!")
+            if recipient_email.lower() in already_sent_emails:
+                skipped_count += 1
+                current_progress = (index + 1) / total_records
+                progress_bar.progress(current_progress)
+                status_text.text(
+                    f"⏩ Skipped {index + 1}/{total_records}: {recipient_email} (Already Sent)"
+                )
+                continue
 
-st.divider()
-st.subheader("📜 Recent Campaign History (Last 48 Hours)")
+            if not recipient_email or "@" not in recipient_email:
+                failed_count += 1
+                log_data = {
+                    "Timestamp": now_str,
+                    "Sender": sender_email,
+                    "Recipient": recipient_email,
+                    "Subject": subject_input,
+                    "Status": "Failed ❌",
+                    "Reason": "Invalid Email",
+                }
+                logs.append(log_data)
+                pd.DataFrame([log_data]).to_csv(
+                    HISTORY_FILE,
+                    mode="a",
+                    header=not os.path.exists(HISTORY_FILE),
+                    index=False,
+                )
+                continue
 
-history_display_df = clean_and_load_history()
-if not history_display_df.empty:
-    st.dataframe(history_display_df, use_container_width=True, height=350)
-    col_dl, col_clr = st.columns(2)
-    col_dl.download_button(
-        label="📥 Download History CSV",
-        data=history_display_df.to_csv(index=False).encode("utf-8"),
-        file_name=f"campaign_history_48h_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-        mime="text/csv",
-        use_container_width=True,
-    )
-    if col_clr.button("🗑️ Clear History Data", use_container_width=True):
-        if os.path.exists(HISTORY_FILE):
-            os.remove(HISTORY_FILE)
-        st.success("History cleared!")
-        st.rerun()
-else:
-    st.info("ℹ️ Abhi tak koi history record save nahi hua hai.")
+            custom_subject = subject_input.replace("{Name}", FALLBACK_NAME)
+            custom_body = current_body.replace("{Name}", FALLBACK_NAME)
+
+            max_retries = 3
+            email_sent = False
+
+            for attempt in range(max_retries):
+                try:
+                    # FIX FOR BULK: Use MIMEMultipart("related") to force HTML mode
+                    msg = MIMEMultipart("related")
+                    msg["From"] = formataddr((sender_name, sender_email))
+                    msg["To"] = recipient_email
+                    msg["Subject"] = custom_subject
+
+                    clean_formatted_html = build_bulletproof_html(custom_body)
+                    msg.attach(MIMEText(clean_formatted_html, "html", "utf-8"))
+
+                    if int(smtp_port) == 465:
+                        with smtplib.SMTP_SSL(
+                            smtp_server, int(smtp_port), timeout=15
+                        ) as server:
+                            server.login(smtp_username, sender_password)
+                            server.sendmail(
+                                sender_email, recipient_email, msg.as_string()
+                            )
+                    else:
+                        with smtplib.SMTP(
+                            smtp_server, int(smtp_port), timeout=15
+                        ) as server:
+                            server.starttls()
+                            server.login(smtp_username, sender_password)
+                            server.sendmail(
+                                sender_email, recipient_email, msg.as_string()
+                            )
+
+                    success_count += 1
+                    email_sent = True
+                    log_data = {
+                        "Timestamp": now_str,
+                        "Sender": sender_email,
+                        "Recipient": recipient_email,
+                        "Subject": custom_subject,
+                        "Status": "Sent ✅",
+                        "Reason": "Success",
+                    }
+                    logs.append(log_data)
+
+                    pd.DataFrame([log_data]).to_csv(
+                        HISTORY_FILE,
+                        mode="a",
+                        header=not os.path.exists(HISTORY_FILE),
+                        index=False,
+                    )
+                    break
+
+                except Exception as e:
+                    if attempt < max_retries - 1:
+                        time.sleep(2)
+                        continue
+                    else:
+                        failed_count += 1
+                        log_data = {
+                            "Timestamp": now_str,
+                            "Sender": sender_email,
+                            "Recipient": recipient_email,
+                            "Subject": custom_subject,
+                            "Status": "Failed ❌",
+                            "Reason": str(e),
+                        }
+                        logs.append(log_data)
+                        pd.DataFrame([log_data]).to_csv(
+                            HISTORY_FILE,
+                            mode="a",
+                            header=not os.path.exists(HISTORY_FILE),
+                            index=False,
+                        )
+
+            current_progress = (index + 1) / total_records
+            progress_bar.progress(current_progress)
+            status_text.text(f"Sending {index + 1}/{total_records}: {recipient_email}")
+
+            if (index + 1) % 50 == 0:
+                time.sleep(10)
+            else:
+                time.sleep(0.5)
+
+        st.success(
+            f"🎯 **Campaign Completed!** Mails Sent: **{success_count}** | Skipped (Already Sent): **{skipped_count}** | Failed: **{failed_count}**"
+        )
+
+        if logs:
+            st.markdown("**Current Batch Summary Report**")
+            log_df = pd.DataFrame(logs)
+            st.dataframe(log_df, use_container_width=True)
