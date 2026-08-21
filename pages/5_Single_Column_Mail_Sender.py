@@ -64,7 +64,6 @@ except ImportError:
 
 # --- 1. HISTORY & RETENTION HELPERS ---
 def clean_and_load_history():
-    """48 hours tak ka history load karta hai aur purana sync karke file me overwrite karta hai"""
     if not os.path.exists(HISTORY_FILE) or os.path.getsize(HISTORY_FILE) == 0:
         return pd.DataFrame()
     try:
@@ -86,7 +85,6 @@ def clean_and_load_history():
         return pd.DataFrame()
 
 def save_to_history(log_entry):
-    """Log record ko history CSV me append karta hai"""
     try:
         log_df = pd.DataFrame([log_entry])
         file_exists = (
@@ -102,7 +100,6 @@ def save_to_history(log_entry):
     except Exception as err:
         st.error(f"⚠️ History write error: {err}")
 
-# Helper functions
 def parse_multi_line_input(text):
     if not text:
         return []
@@ -130,19 +127,36 @@ def parse_credentials(text):
 
 def get_dynamic_senders(manual_text=""):
     senders = []
-    # Priority 1: Manual text input from UI
+    # Priority 1: Manual text input
     if manual_text.strip():
         senders = parse_credentials(manual_text)
         if senders:
             return senders, "Manual Text Area"
 
-    # Priority 2: secrets.toml (SMTP_SENDERS)
+    # Priority 2: secrets.toml (SMTP_SENDERS string)
     if "SMTP_SENDERS" in st.secrets:
         senders = parse_credentials(st.secrets["SMTP_SENDERS"])
         if senders:
             return senders, "secrets.toml (SMTP_SENDERS)"
 
-    # Priority 3: secrets.toml (smtp.accounts)
+    # Priority 3: secrets.toml ([smtp_accounts.*] format)
+    if "smtp_accounts" in st.secrets:
+        smtp_accs = st.secrets["smtp_accounts"]
+        for acc_key in smtp_accs:
+            acc = smtp_accs[acc_key]
+            em = acc.get("email")
+            pw = acc.get("pass") or acc.get("password")
+            if em and pw:
+                senders.append({
+                    "email": str(em).strip(),
+                    "password": str(pw).strip(),
+                    "server": acc.get("server"),
+                    "port": acc.get("port")
+                })
+        if senders:
+            return senders, "secrets.toml ([smtp_accounts])"
+
+    # Priority 4: secrets.toml (smtp.accounts format)
     if "smtp" in st.secrets and "accounts" in st.secrets["smtp"]:
         for acc in st.secrets["smtp"]["accounts"]:
             if "email" in acc and "password" in acc:
@@ -150,29 +164,10 @@ def get_dynamic_senders(manual_text=""):
         if senders:
             return senders, "secrets.toml (smtp.accounts)"
 
-    # Priority 4: testsmtp.csv file
-    csv_path = os.path.abspath(os.path.join(parent_dir, "testsmtp.csv"))
-    if os.path.exists(csv_path):
-        try:
-            df_smtp = pd.read_csv(csv_path)
-            e_cols = [c for c in df_smtp.columns if "email" in c.lower()]
-            p_cols = [c for c in df_smtp.columns if "pass" in c.lower()]
-            if e_cols and p_cols:
-                for _, row in df_smtp.iterrows():
-                    em = str(row[e_cols[0]]).strip()
-                    pw = str(row[p_cols[0]]).strip()
-                    if em and pw and em.lower() != "nan" and pw.lower() != "nan":
-                        senders.append({"email": em, "password": pw})
-                if senders:
-                    return senders, "testsmtp.csv"
-        except Exception as e:
-            st.error(f"⚠️ CSV read error: {e}")
-
     return [], "None"
 
 st.title("📧 Single Column Campaign Sender (With Auto Resume)")
 
-# Upload Files Section
 col_left, col_right = st.columns(2)
 
 with col_left:
@@ -181,16 +176,16 @@ with col_left:
     smtp_port = st.number_input("SMTP Port", value=587, step=1)
     
     sender_text = st.text_area(
-        "Sender Accounts (Optional: leave empty to auto-load from secrets/CSV)",
+        "Sender Accounts (Optional: leave empty to auto-load from secrets.toml)",
         height=150,
-        placeholder="email:password or email,password\n(If empty, system auto-fetches from TOML/testsmtp.csv)"
+        placeholder="email:password or email,password\n(If empty, system auto-fetches from TOML)"
     )
     
     senders, source_used = get_dynamic_senders(sender_text)
     if senders:
         st.success(f"✅ Loaded {len(senders)} senders automatically from: **{source_used}**")
     else:
-        st.warning("⚠️ No senders found in Manual Input, secrets.toml, or testsmtp.csv!")
+        st.warning("⚠️ No senders found in Manual Input or secrets.toml!")
 
 with col_right:
     st.subheader("2. Recipient Data Setup")
@@ -212,7 +207,6 @@ with col_right:
 
 st.divider()
 
-# Email Content Section
 st.subheader("3. Campaign Message Setup")
 sender_name = st.text_input("Display Sender Name", value="Support Team")
 subject_template = st.text_input(
@@ -224,7 +218,6 @@ email_body = st_quill(
     placeholder="Write your email here...", key="single_col_quill"
 )
 
-# Advanced Configuration
 with st.expander("⚙️ Advanced Settings & Resume Options"):
     delay_between_mails = st.number_input(
         "Delay Between Emails (seconds)", value=2, min_value=0
@@ -235,17 +228,15 @@ with st.expander("⚙️ Advanced Settings & Resume Options"):
 
 st.divider()
 
-# Campaign Trigger Button
 if st.button("🚀 Start Campaign", type="primary", use_container_width=True):
     if not senders:
-        st.error("❌ Sender accounts enter karein ya secrets/testsmtp.csv setup karein!")
+        st.error("❌ Sender accounts enter karein ya secrets.toml setup karein!")
         st.stop()
 
     if recipient_df.empty:
         st.error("❌ Valid Recipient file upload karein!")
         st.stop()
 
-    # Load 48-hour history for auto-resume skip check
     already_sent_emails = set()
     if enable_auto_resume:
         history_df = clean_and_load_history()
@@ -279,7 +270,6 @@ if st.button("🚀 Start Campaign", type="primary", use_container_width=True):
     total_senders = len(senders)
 
     for idx, row in recipient_df.iterrows():
-        # Clean email column check
         email = ""
         for col in recipient_df.columns:
             if "email" in col.lower() or "recipient" in col.lower():
@@ -288,23 +278,24 @@ if st.button("🚀 Start Campaign", type="primary", use_container_width=True):
         if not email and len(recipient_df.columns) > 0:
             email = str(row.iloc[0]).strip()
 
-        # Skip check if resume enabled
         if enable_auto_resume and email.lower() in already_sent_emails:
             with logs_container:
                 st.write(f"⏭️ Skipped (Already sent in last 48h): {email}")
             progress_bar.progress((idx + 1) / total_recipients)
             continue
 
-        # Round-robin sender selection
         curr_sender = senders[sender_index % total_senders]
         sender_email = curr_sender["email"]
         sender_pass = curr_sender["password"]
+        
+        # TOML account config override if present
+        active_host = curr_sender.get("server") or smtp_host
+        active_port = int(curr_sender.get("port") or smtp_port)
+        
         sender_index += 1
 
-        # Extract name if present
         rec_name = str(row.get("Name", row.get("name", "Customer")))
 
-        # Personalize subject/body
         custom_subject = subject_template.replace("{Name}", rec_name)
         custom_body = email_body.replace("{Name}", rec_name)
 
@@ -319,7 +310,7 @@ if st.button("🚀 Start Campaign", type="primary", use_container_width=True):
             msg["Subject"] = custom_subject
             msg.attach(MIMEText(custom_body, "html"))
 
-            server = smtplib.SMTP(smtp_host, smtp_port, timeout=15)
+            server = smtplib.SMTP(active_host, active_port, timeout=15)
             server.starttls()
             server.login(sender_email, sender_pass)
             server.sendmail(sender_email, email, msg.as_string())
@@ -333,7 +324,6 @@ if st.button("🚀 Start Campaign", type="primary", use_container_width=True):
             with logs_container:
                 st.error(f"❌ Failed for {email}: {error_reason}")
 
-        # Save record in 48-hour history
         log_entry = {
             "Timestamp": now_str,
             "List Name": list_name,
@@ -352,7 +342,6 @@ if st.button("🚀 Start Campaign", type="primary", use_container_width=True):
 
     st.success("🎉 Campaign execution complete!")
 
-# --- 5. PAGE 5 LIVE 48-HOUR HISTORY DISPLAY ---
 st.divider()
 st.subheader("📜 Recent Campaign History (Last 48 Hours)")
 
