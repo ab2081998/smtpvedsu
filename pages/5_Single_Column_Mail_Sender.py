@@ -153,11 +153,25 @@ def make_links_clickable(text):
 
     return text
 
-def convert_to_html(raw_text):
-    """Converts text into HTML email format and ensures clickable hrefs."""
+def convert_to_html(raw_text, is_rich_text=False):
+    """Converts text into HTML email format properly based on editor type."""
     if not raw_text:
         return ""
 
+    # Agar Rich Text Editor (Quill) se content aaya hai, toh use direct HTML container me wrap karein
+    if is_rich_text:
+        return f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="font-family: Arial, sans-serif; font-size: 14px; color: #222222; line-height: 1.6; margin: 0; padding: 15px;">
+    {raw_text}
+</body>
+</html>"""
+
+    # Plain text input ke liye formatting
     formatted_text = make_links_clickable(raw_text)
 
     if "<html" in formatted_text.lower() or "<body" in formatted_text.lower():
@@ -242,7 +256,7 @@ with col_right:
 
 st.divider()
 
-# --- Page 4 Exact Text Editor Implementation ---
+# --- Campaign Message Setup ---
 st.subheader("3. Campaign Message Setup")
 
 subject_template = st.text_input(
@@ -290,7 +304,9 @@ if st.button("🚀 Start Campaign", type="primary", use_container_width=True):
         st.error("❌ Email Body khali nahi ho sakta!")
         st.stop()
 
-    html_formatted_body = convert_to_html(email_body)
+    # Pass editor mode state to convert_to_html
+    is_rich = (editor_mode == "Rich Text Editor (Quill)")
+    html_formatted_body = convert_to_html(email_body, is_rich_text=is_rich)
 
     already_sent_emails = set()
     if enable_auto_resume:
