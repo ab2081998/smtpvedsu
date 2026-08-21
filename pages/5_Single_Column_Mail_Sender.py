@@ -66,33 +66,36 @@ except ImportError:
 def load_smtp_accounts():
     accounts = []
     
-    # A. Check secrets.toml for multiple accounts
+    # A. Check secrets.toml for nested tables like [smtp_accounts.resend4]
     try:
-        # 1. Check if accounts exist as a list inside secrets.toml (e.g. [[smtp_accounts]] or smtp_accounts = [...])
         if "smtp_accounts" in st.secrets:
-            toml_accs = st.secrets["smtp_accounts"]
-            if isinstance(toml_accs, list):
-                for acc in toml_accs:
+            smtp_sec = st.secrets["smtp_accounts"]
+            
+            # Dictionary format handling ([smtp_accounts.resend1], etc.)
+            if hasattr(smtp_sec, "items"):
+                for acc_key, acc in smtp_sec.items():
+                    if hasattr(acc, "get"):
+                        accounts.append({
+                            "name": acc.get("name", acc_key),
+                            "email": str(acc.get("email", "")).strip(),
+                            "user": str(acc.get("user", acc.get("email", ""))).strip(),
+                            "pass": str(acc.get("pass", acc.get("password", ""))).strip(),
+                            "server": str(acc.get("server", "smtp.resend.com")).strip(),
+                            "port": int(acc.get("port", 587)),
+                        })
+            # List format handling ([[smtp_accounts]])
+            elif isinstance(smtp_sec, list):
+                for acc in smtp_sec:
                     accounts.append({
                         "name": acc.get("name", "SMTP Sender"),
-                        "email": acc.get("email", "").strip(),
-                        "user": acc.get("user", acc.get("email", "")).strip(),
-                        "pass": acc.get("pass", acc.get("password", "")).strip(),
-                        "server": acc.get("server", "smtp.resend.com").strip(),
-                        "port": int(acc.get("port", 587)),
-                    })
-            elif isinstance(toml_accs, dict):
-                for key, acc in toml_accs.items():
-                    accounts.append({
-                        "name": acc.get("name", key),
-                        "email": acc.get("email", "").strip(),
-                        "user": acc.get("user", acc.get("email", "")).strip(),
-                        "pass": acc.get("pass", acc.get("password", "")).strip(),
-                        "server": acc.get("server", "smtp.resend.com").strip(),
+                        "email": str(acc.get("email", "")).strip(),
+                        "user": str(acc.get("user", acc.get("email", ""))).strip(),
+                        "pass": str(acc.get("pass", acc.get("password", ""))).strip(),
+                        "server": str(acc.get("server", "smtp.resend.com")).strip(),
                         "port": int(acc.get("port", 587)),
                     })
 
-        # 2. Check individual keys (DEFAULT_SMTP_...)
+        # Single Default Account Fallback
         def_email = st.secrets.get("DEFAULT_SMTP_EMAIL", "")
         if def_email and not any(a["email"] == def_email for a in accounts):
             accounts.append({
@@ -106,7 +109,7 @@ def load_smtp_accounts():
     except Exception as e:
         pass
 
-    # B. Check smtp_accounts.csv file
+    # B. Check smtp_accounts.csv file fallback
     if os.path.exists("smtp_accounts.csv"):
         try:
             acc_df = pd.read_csv("smtp_accounts.csv")
@@ -169,7 +172,7 @@ with st.sidebar:
         selected_acc_idx = st.selectbox("Available Accounts:", range(len(acc_labels)), format_func=lambda x: acc_labels[x])
         selected_acc = smtp_list[selected_acc_idx]
         
-        # Auto sync with selected dropdown item
+        # Auto-sync selected account details to session state
         st.session_state["smtp_email"] = selected_acc["email"]
         st.session_state["smtp_user"] = selected_acc["user"]
         st.session_state["smtp_password"] = selected_acc["pass"]
