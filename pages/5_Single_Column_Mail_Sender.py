@@ -19,6 +19,9 @@ parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if parent_dir not in sys.path:
     sys.path.append(parent_dir)
 
+# History file ko Root Directory me Fix karein taaki History Page padh sake
+HISTORY_FILE = os.path.join(parent_dir, "email_history.csv")
+
 try:
     import auth
 
@@ -71,7 +74,6 @@ def load_smtp_accounts():
         if "smtp_accounts" in st.secrets:
             smtp_sec = st.secrets["smtp_accounts"]
             
-            # Dictionary format handling ([smtp_accounts.resend1], etc.)
             if hasattr(smtp_sec, "items"):
                 for acc_key, acc in smtp_sec.items():
                     if hasattr(acc, "get"):
@@ -83,7 +85,6 @@ def load_smtp_accounts():
                             "server": str(acc.get("server", "smtp.resend.com")).strip(),
                             "port": int(acc.get("port", 587)),
                         })
-            # List format handling ([[smtp_accounts]])
             elif isinstance(smtp_sec, list):
                 for acc in smtp_sec:
                     accounts.append({
@@ -95,7 +96,6 @@ def load_smtp_accounts():
                         "port": int(acc.get("port", 587)),
                     })
 
-        # Single Default Account Fallback
         def_email = st.secrets.get("DEFAULT_SMTP_EMAIL", "")
         if def_email and not any(a["email"] == def_email for a in accounts):
             accounts.append({
@@ -109,10 +109,11 @@ def load_smtp_accounts():
     except Exception as e:
         pass
 
-    # B. Check smtp_accounts.csv file fallback
-    if os.path.exists("smtp_accounts.csv"):
+    # B. Check smtp_accounts.csv file
+    csv_path = os.path.join(parent_dir, "smtp_accounts.csv")
+    if os.path.exists(csv_path):
         try:
-            acc_df = pd.read_csv("smtp_accounts.csv")
+            acc_df = pd.read_csv(csv_path)
             acc_df.columns = acc_df.columns.str.strip().str.lower()
             for _, row in acc_df.iterrows():
                 email_val = str(row.get("email", "")).strip()
@@ -132,7 +133,6 @@ def load_smtp_accounts():
 
 smtp_list = load_smtp_accounts()
 
-# Session State Auto Initialize
 if "smtp_email" not in st.session_state and smtp_list:
     st.session_state["smtp_email"] = smtp_list[0]["email"]
     st.session_state["smtp_user"] = smtp_list[0]["user"]
@@ -172,7 +172,6 @@ with st.sidebar:
         selected_acc_idx = st.selectbox("Available Accounts:", range(len(acc_labels)), format_func=lambda x: acc_labels[x])
         selected_acc = smtp_list[selected_acc_idx]
         
-        # Auto-sync selected account details to session state
         st.session_state["smtp_email"] = selected_acc["email"]
         st.session_state["smtp_user"] = selected_acc["user"]
         st.session_state["smtp_password"] = selected_acc["pass"]
@@ -266,7 +265,6 @@ st.divider()
 # --- STEP C: BULK SENDING LOGIC ---
 st.markdown("**3. Start Sending Campaign**")
 notification_box = st.container()
-HISTORY_FILE = "email_history.csv"
 
 if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
     if df is None or len(df) == 0:
@@ -321,6 +319,7 @@ if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
                     "Sender": sender_email,
                     "Name": recipient_name,
                     "Recipient": recipient_email,
+                    "Email": recipient_email,
                     "Subject": subject_input,
                     "Status": "Failed ❌",
                     "Reason": "Invalid Email",
@@ -367,6 +366,7 @@ if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
                         "Sender": sender_email,
                         "Name": recipient_name,
                         "Recipient": recipient_email,
+                        "Email": recipient_email,
                         "Subject": custom_subject,
                         "Status": "Sent ✅",
                         "Reason": "Success",
@@ -387,6 +387,7 @@ if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
                             "Sender": sender_email,
                             "Name": recipient_name,
                             "Recipient": recipient_email,
+                            "Email": recipient_email,
                             "Subject": custom_subject,
                             "Status": "Failed ❌",
                             "Reason": str(e),
