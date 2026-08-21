@@ -52,7 +52,7 @@ supabase_client = get_supabase_client()
 
 st.title("📊 Email History & Logs")
 
-# --- 2. SYNC CSV DATA TO SUPABASE (WITH DEDUPLICATION) ---
+# --- 2. SYNC CSV DATA TO SUPABASE (WITHOUT REMOVED COLUMNS) ---
 if os.path.exists(HISTORY_FILE) and supabase_client:
     with st.expander("☁️ Sync / Push Local CSV Data to Supabase"):
         st.write("Local `email_history.csv` file se naye records Supabase database me sync karein:")
@@ -60,39 +60,35 @@ if os.path.exists(HISTORY_FILE) and supabase_client:
             try:
                 csv_df = pd.read_csv(HISTORY_FILE)
                 if not csv_df.empty:
-                    # 1. Fetch existing timestamps & recipients from Supabase to prevent duplicates
-                    existing_data = supabase_client.table("email_history").select("timestamp, recipient").execute()
+                    # Duplicate check using recipient & subject
+                    existing_data = supabase_client.table("email_history").select("recipient, subject").execute()
                     existing_keys = set()
                     if existing_data.data:
                         for item in existing_data.data:
-                            existing_keys.add(f"{item.get('timestamp')}_{item.get('recipient')}")
+                            existing_keys.add(f"{item.get('recipient')}_{item.get('subject')}")
 
                     records = []
                     skipped_count = 0
 
                     for _, row in csv_df.iterrows():
-                        ts = str(row.get("Timestamp", "")).strip()
                         rec = str(row.get("Recipient", "")).strip()
-                        key = f"{ts}_{rec}"
+                        subj = str(row.get("Subject", "")).strip()
+                        key = f"{rec}_{subj}"
 
-                        # Skip if record already exists in Supabase
                         if key in existing_keys:
                             skipped_count += 1
                             continue
 
                         records.append({
-                            "timestamp": ts,
                             "list_name": str(row.get("List Name", "")),
-                            "sender": str(row.get("Sender", "")),
                             "recipient": rec,
-                            "subject": str(row.get("Subject", "")),
-                            "status": str(row.get("Status", "")),
+                            "subject": subj,
                             "reason": str(row.get("Reason", ""))
                         })
 
                     if records:
                         supabase_client.table("email_history").insert(records).execute()
-                        st.success(f"✅ Successful! {len(records)} naye records upload hue. ({skipped_count} duplicate records skip hue)")
+                        st.success(f"✅ Successful! {len(records)} naye records upload hue. ({skipped_count} duplicates skipped)")
                         st.rerun()
                     else:
                         st.info(f"ℹ️ Saare records pehle se Supabase me maujood hain. ({skipped_count} records skipped)")
@@ -109,12 +105,9 @@ def load_history_data():
             if res.data:
                 df = pd.DataFrame(res.data)
                 cols_rename = {
-                    "timestamp": "Timestamp",
                     "list_name": "List Name",
-                    "sender": "Sender",
                     "recipient": "Recipient",
                     "subject": "Subject",
-                    "status": "Status",
                     "reason": "Reason"
                 }
                 return df.rename(columns=cols_rename), "Supabase Cloud Database"
@@ -138,37 +131,25 @@ if df.empty:
     st.info("ℹ️ Koi history record nahi mila.")
 else:
     # Filter Controls
-    col_f1, col_f2 = st.columns(2)
-    with col_f1:
-        status_filter = st.multiselect(
-            "Filter by Status:",
-            options=df["Status"].unique().tolist() if "Status" in df.columns else [],
-            default=df["Status"].unique().tolist() if "Status" in df.columns else []
-        )
-    with col_f2:
-        list_filter = st.multiselect(
-            "Filter by List Name:",
-            options=df["List Name"].unique().tolist() if "List Name" in df.columns else [],
-            default=df["List Name"].unique().tolist() if "List Name" in df.columns else []
-        )
+    list_options = df["List Name"].unique().tolist() if "List Name" in df.columns else []
+    list_filter = st.multiselect(
+        "Filter by List Name:",
+        options=list_options,
+        default=list_options
+    )
 
     filtered_df = df.copy()
-    if status_filter and "Status" in filtered_df.columns:
-        filtered_df = filtered_df[filtered_df["Status"].isin(status_filter)]
     if list_filter and "List Name" in filtered_df.columns:
         filtered_df = filtered_df[filtered_df["List Name"].isin(list_filter)]
 
     # Metrics
-    m1, m2, m3 = st.columns(3)
+    m1, m2 = st.columns(2)
     m1.metric("Total Logs", len(df))
     m2.metric("Filtered Records", len(filtered_df))
-    sent_count = len(df[df["Status"].str.contains("Sent|✅", na=False, case=False)]) if "Status" in df.columns else 0
-    m3.metric("Successful Mails", sent_count)
 
     st.divider()
 
-    # Hide internal database columns like id/created_at if present
-    display_cols = [col for col in ["Timestamp", "List Name", "Sender", "Recipient", "Subject", "Status", "Reason"] if col in filtered_df.columns]
+    display_cols = [col for col in ["created_at", "List Name", "Recipient", "Subject", "Reason"] if col in filtered_df.columns]
     st.dataframe(filtered_df[display_cols], use_container_width=True)
 
     # Danger Zone
