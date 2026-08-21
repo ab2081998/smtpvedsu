@@ -17,13 +17,11 @@ if parent_dir not in sys.path:
     sys.path.append(parent_dir)
 import auth
 
-# Force Authentication Check via auth.py
 if hasattr(auth, "require_auth"):
     auth.require_auth()
 elif hasattr(auth, "check_auth"):
     auth.check_auth()
 
-# Fallback session check with password unlock input
 if not st.session_state.get("authenticated", False):
     st.subheader("🔒 Page Locked")
     password_input = st.text_input("Enter password to unlock page:", type="password")
@@ -42,7 +40,6 @@ smtp_secrets = st.secrets.get("smtp_accounts", {})
 if "smtp_profiles" not in st.session_state:
     st.session_state["smtp_profiles"] = {}
 
-# secrets.toml mein [smtp_accounts.xxx] format load karein
 if smtp_secrets:
     for acc_key, acc_data in smtp_secrets.items():
         profile_label = acc_data.get("name", acc_key.title())
@@ -55,7 +52,6 @@ if smtp_secrets:
             "name": str(acc_data.get("name", "")),
         }
 
-# Fallback: Agar purani single DEFAULT_SMTP_ keys ho
 if not st.session_state["smtp_profiles"]:
     DEF_EMAIL = st.secrets.get("DEFAULT_SMTP_EMAIL", "")
     DEF_USER = st.secrets.get("DEFAULT_SMTP_USER", "")
@@ -73,7 +69,6 @@ if not st.session_state["smtp_profiles"]:
         "name": DEF_NAME,
     }
 
-# Initial Session Credentials set karein
 first_profile = list(st.session_state["smtp_profiles"].values())[0]
 if "smtp_email" not in st.session_state:
     st.session_state["smtp_email"] = first_profile["email"]
@@ -88,7 +83,6 @@ if "smtp_port" not in st.session_state:
 if "smtp_name" not in st.session_state:
     st.session_state["smtp_name"] = first_profile["name"]
 
-# PROPER HTML TEMPLATE FOR CS / INVITATIONS
 DEFAULT_TEMPLATE = """<p>Hi {Name},</p>
 <p>I hope this email finds you well.</p>
 <p>Write your message here...</p>
@@ -103,12 +97,9 @@ DEFAULT_TEMPLATE = """<p>Hi {Name},</p>
 if "editor_text" not in st.session_state:
     st.session_state["editor_text"] = DEFAULT_TEMPLATE
 
-# --- HTML FORMATTER FUNCTION (PRESERVES SPACING & BULLETS) ---
 def build_bulletproof_html(raw_html_or_text):
     if not raw_html_or_text:
         return ""
-    
-    # Agar raw lines hain (not quill HTML), convert \n to <br>
     if "<p>" not in raw_html_or_text and "<div>" not in raw_html_or_text:
         formatted_content = raw_html_or_text.replace("\n", "<br>")
     else:
@@ -120,43 +111,14 @@ def build_bulletproof_html(raw_html_or_text):
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
-        body {{
-            font-family: Arial, sans-serif;
-            font-size: 14px;
-            color: #222222;
-            line-height: 1.6;
-            margin: 0;
-            padding: 15px;
-        }}
-        p {{
-            margin-top: 0px;
-            margin-bottom: 12px;
-            line-height: 1.6;
-        }}
-        h1, h2, h3, h4 {{
-            color: #111111;
-            margin-top: 15px;
-            margin-bottom: 10px;
-        }}
-        ul, ol {{
-            margin-top: 5px;
-            margin-bottom: 15px;
-            padding-left: 20px;
-        }}
-        li {{
-            margin-bottom: 6px;
-            line-height: 1.6;
-        }}
-        a {{
-            color: #0066cc;
-            text-decoration: underline;
-        }}
-        b, strong {{
-            font-weight: bold;
-        }}
-        i, em {{
-            font-style: italic;
-        }}
+        body {{ font-family: Arial, sans-serif; font-size: 14px; color: #222222; line-height: 1.6; margin: 0; padding: 15px; }}
+        p {{ margin-top: 0px; margin-bottom: 12px; line-height: 1.6; }}
+        h1, h2, h3, h4 {{ color: #111111; margin-top: 15px; margin-bottom: 10px; }}
+        ul, ol {{ margin-top: 5px; margin-bottom: 15px; padding-left: 20px; }}
+        li {{ margin-bottom: 6px; line-height: 1.6; }}
+        a {{ color: #0066cc; text-decoration: underline; }}
+        b, strong {{ font-weight: bold; }}
+        i, em {{ font-style: italic; }}
     </style>
 </head>
 <body>
@@ -264,8 +226,10 @@ uploaded_file = st.file_uploader(
 
 df = None
 email_col = None
+csv_filename = "Single_Col_Campaign"
 
 if uploaded_file is not None:
+    csv_filename = os.path.splitext(uploaded_file.name)[0]  # DYNAMIC CSV NAME
     try:
         df = pd.read_csv(uploaded_file)
         df.columns = df.columns.str.strip()
@@ -278,7 +242,7 @@ if uploaded_file is not None:
                 if col.lower() == "email":
                     email_col = col
                     break
-            st.success(f"✅ CSV Loaded! Total Records: {len(df)}")
+            st.success(f"✅ CSV Loaded: `{uploaded_file.name}`! Total Records: {len(df)}")
             st.info(f"📌 **Selected Email Column:** `{email_col}`")
             st.dataframe(df.head(5), use_container_width=True)
     except Exception as e:
@@ -291,7 +255,6 @@ st.markdown("**2. Email Content**")
 
 subject_input = st.text_input("Email Subject:", value="Important Announcement")
 
-# TEXT EDITOR SWITCHER (FIXED EDITOR FORMATTING)
 editor_type = st.radio(
     "Select Editor Style:",
     ["Rich Text Editor (Quill)", "Plain Text / Standard Editor"],
@@ -312,7 +275,6 @@ else:
         height=250
     )
 
-# Save Template aur Test Mail Toolbar
 col_save, col_test_input, col_test_btn = st.columns([1.5, 2.5, 1])
 
 with col_save:
@@ -330,7 +292,6 @@ with col_test_input:
 with col_test_btn:
     send_test_btn = st.button("🧪 Send Test Mail", type="primary", use_container_width=True)
 
-# Test Email Execution Block
 if send_test_btn:
     if not test_recipient or "@" not in test_recipient:
         st.error("❌ Valid recipient email address dalein!")
@@ -346,7 +307,6 @@ if send_test_btn:
         test_body = active_body.replace("{Name}", "Test User")
 
         try:
-            # FIX: Forced HTML Rendering using "related" MIME structure
             msg = MIMEMultipart("related")
             msg["From"] = formataddr((sender_name, sender_email))
             msg["To"] = test_recipient
@@ -372,12 +332,12 @@ if send_test_btn:
 
 st.divider()
 
-# --- STEP C: BULK SENDING LOGIC WITH AUTO-RESUME & RETRY ---
+# --- STEP C: BULK SENDING LOGIC WITH DYNAMIC CSV NAME LOGGING ---
 st.markdown("**3. Start Bulk Campaign**")
 
 notification_box = st.container()
 FALLBACK_NAME = "there"
-HISTORY_FILE = "email_history.csv"
+HISTORY_FILE = os.path.abspath(os.path.join(parent_dir, "email_history.csv"))
 
 if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
     if df is None or len(df) == 0:
@@ -400,7 +360,7 @@ if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
             history_df = pd.read_csv(HISTORY_FILE)
             if "Recipient" in history_df.columns and "Status" in history_df.columns:
                 already_sent_emails = set(
-                    history_df[history_df["Status"] == "Sent ✅"]["Recipient"]
+                    history_df[history_df["Status"].str.contains("Sent|✅", na=False, case=False)]["Recipient"]
                     .astype(str)
                     .str.strip()
                     .str.lower()
@@ -435,6 +395,7 @@ if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
                 failed_count += 1
                 log_data = {
                     "Timestamp": now_str,
+                    "List Name": csv_filename, # DYNAMIC CSV NAME FIELD
                     "Sender": sender_email,
                     "Recipient": recipient_email,
                     "Subject": subject_input,
@@ -458,7 +419,6 @@ if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
 
             for attempt in range(max_retries):
                 try:
-                    # FIX FOR BULK: Use MIMEMultipart("related") to force HTML mode
                     msg = MIMEMultipart("related")
                     msg["From"] = formataddr((sender_name, sender_email))
                     msg["To"] = recipient_email
@@ -489,6 +449,7 @@ if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
                     email_sent = True
                     log_data = {
                         "Timestamp": now_str,
+                        "List Name": csv_filename, # DYNAMIC CSV NAME FIELD
                         "Sender": sender_email,
                         "Recipient": recipient_email,
                         "Subject": custom_subject,
@@ -513,6 +474,7 @@ if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
                         failed_count += 1
                         log_data = {
                             "Timestamp": now_str,
+                            "List Name": csv_filename, # DYNAMIC CSV NAME FIELD
                             "Sender": sender_email,
                             "Recipient": recipient_email,
                             "Subject": custom_subject,
