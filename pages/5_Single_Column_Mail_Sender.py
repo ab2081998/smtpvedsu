@@ -152,17 +152,29 @@ def make_links_clickable(text):
 
     return text
 
-def prepare_full_email_html(body_content, is_quill=False):
-    """Generates complete HTML document preserving all styles, images, and formatting."""
-    if not body_content:
+def build_original_styled_html(raw_content, is_quill_active):
+    """Preserves EXACT layout, headings, bold text, bullets, and spacing."""
+    if not raw_content:
         return ""
-    
-    if is_quill:
-        formatted_body = body_content
+
+    if is_quill_active:
+        # Quill already provides valid HTML, keep as is
+        body_html = raw_content
     else:
-        clickable_text = make_links_clickable(body_content)
-        paragraphs = clickable_text.split("\n\n")
-        formatted_body = "".join([f"<p style='margin-bottom: 12px;'>{p.replace('\n', '<br>')}</p>" for p in paragraphs if p.strip()])
+        # Plain text input ko formatted HTML me convert karein
+        paragraphs = raw_content.split("\n")
+        formatted_paragraphs = []
+        for p in paragraphs:
+            p_str = p.strip()
+            if not p_str:
+                formatted_paragraphs.append("<br>")
+            elif p_str.startswith("•") or p_str.startswith("-"):
+                clean_bullet = p_str.lstrip("•-").strip()
+                formatted_paragraphs.append(f"<li style='margin-bottom: 6px;'>{make_links_clickable(clean_bullet)}</li>")
+            else:
+                formatted_paragraphs.append(f"<p style='margin: 0 0 12px 0;'>{make_links_clickable(p_str)}</p>")
+        
+        body_html = "".join(formatted_paragraphs)
 
     return f"""<!DOCTYPE html>
 <html>
@@ -170,15 +182,44 @@ def prepare_full_email_html(body_content, is_quill=False):
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
-        body {{ font-family: Arial, Helvetica, sans-serif; font-size: 15px; line-height: 1.6; color: #333333; margin: 0; padding: 10px; }}
-        img {{ max-width: 100% !important; height: auto !important; display: block; margin: 10px 0; }}
-        a {{ color: #0066cc; text-decoration: underline; }}
-        strong, b {{ font-weight: bold; }}
-        em, i {{ font-style: italic; }}
+        body {{
+            font-family: Arial, sans-serif;
+            font-size: 14px;
+            color: #222222;
+            line-height: 1.6;
+            margin: 0;
+            padding: 15px;
+        }}
+        h1, h2, h3, h4 {{
+            color: #111111;
+            margin-top: 15px;
+            margin-bottom: 10px;
+        }}
+        p {{
+            margin-bottom: 12px;
+        }}
+        ul, ol {{
+            margin-top: 5px;
+            margin-bottom: 15px;
+            padding-left: 20px;
+        }}
+        li {{
+            margin-bottom: 6px;
+        }}
+        a {{
+            color: #0066cc;
+            text-decoration: underline;
+        }}
+        b, strong {{
+            font-weight: bold;
+        }}
+        i, em {{
+            font-style: italic;
+        }}
     </style>
 </head>
 <body>
-    {formatted_body}
+    {body_html}
 </body>
 </html>"""
 
@@ -262,12 +303,12 @@ editor_mode = st.radio(
 if editor_mode == "Plain / Standard Text Input":
     email_body = st.text_area(
         "Email Body",
-        value="Managing employee performance...\n\nRegister Now: https://www.webinarbrite.com\nNeed assistance? cs@webinarbrite.com",
+        value="Credentialing 101: A Detailed Guide to Provider Credentialing...\n\nKey Takeaways:\n• Understand the complete provider credentialing process\n• Identify key terms (NPI, CAQH, PECOS)\n\nReserve Your Spot: https://www.webinarbrite.com",
         height=280
     )
 else:
     email_body = st_quill(
-        placeholder="Write your rich formatted email here (Bold, Italic, Flyer images, Links supported)...",
+        placeholder="Type or paste your formatted content with bullets, bold, headers...",
         key="single_col_quill"
     )
 
@@ -294,8 +335,8 @@ if st.button("🚀 Start Campaign", type="primary", use_container_width=True):
         st.error("❌ Email Body khali nahi ho sakta!")
         st.stop()
 
-    is_quill_active = (editor_mode == "Rich Text Editor (Quill)")
-    final_html = prepare_full_email_html(email_body, is_quill=is_quill_active)
+    is_quill = (editor_mode == "Rich Text Editor (Quill)")
+    final_email_html = build_original_styled_html(email_body, is_quill_active=is_quill)
 
     already_sent_emails = set()
     if enable_auto_resume:
@@ -340,18 +381,13 @@ if st.button("🚀 Start Campaign", type="primary", use_container_width=True):
         error_reason = "Success"
 
         try:
-            # Multi-part message setup
-            msg = MIMEMultipart("alternative")
+            # DIRECT HTML MIME (Pehle jaisa exact format delivery ke liye)
+            msg = MIMEMultipart("related")
             msg["From"] = formataddr((active_sender_name, sender_email))
             msg["To"] = email
             msg["Subject"] = subject_template
 
-            # Plain text fall-back version for email clients
-            plain_text = re.sub(r'<[^>]+>', '', final_html)
-            
-            # Attach plain text FIRST, HTML SECOND (Crucial for Gmail/Outlook HTML rendering)
-            msg.attach(MIMEText(plain_text, "plain", "utf-8"))
-            msg.attach(MIMEText(final_html, "html", "utf-8"))
+            msg.attach(MIMEText(final_email_html, "html", "utf-8"))
 
             server = smtplib.SMTP(active_host, active_port, timeout=15)
             server.starttls()
