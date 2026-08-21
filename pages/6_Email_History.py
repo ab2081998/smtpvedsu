@@ -1,8 +1,9 @@
-from datetime import datetime, timedelta
+from datetime import datetime
 import os
 import sys
 import pandas as pd
 import streamlit as st
+from supabase import create_client, Client
 
 # --- 0. AUTHENTICATION & PATH SETUP ---
 if "authenticated" not in st.session_state:
@@ -16,161 +17,149 @@ HISTORY_FILE = os.path.abspath(os.path.join(parent_dir, "email_history.csv"))
 
 try:
     import auth
-
     if hasattr(auth, "require_auth"):
         auth.require_auth()
     elif hasattr(auth, "check_auth"):
         auth.check_auth()
-    else:
-        if not st.session_state["authenticated"]:
-            st.warning("🔒 Access Restricted! Please enter password.")
-            user_pass = st.text_input(
-                "Please enter Password",
-                type="password",
-                key="hist_auth_pass_input",
-            )
-            CORRECT_PASSWORD = st.secrets.get("PASSWORD", "root")
-            if st.button("Unlock Page"):
-                if user_pass == CORRECT_PASSWORD:
-                    st.session_state["authenticated"] = True
-                    st.success("✅ Password correct!")
-                    st.rerun()
-                else:
-                    st.error("❌ Incorrect password!")
-            st.stop()
 except ImportError:
-    if not st.session_state["authenticated"]:
-        st.warning("🔒 Access Restricted! Please enter password.")
-        user_pass = st.text_input(
-            "Please enter Password", type="password", key="hist_auth_pass_input"
-        )
-        CORRECT_PASSWORD = st.secrets.get("PASSWORD", "root")
-        if st.button("Unlock Page"):
-            if user_pass == CORRECT_PASSWORD:
-                st.session_state["authenticated"] = True
-                st.success("✅ Password correct!")
-                st.rerun()
-            else:
-                st.error("❌ Incorrect password!")
-        st.stop()
+    pass
 
-
-# --- HELPER: 48 HOURS CLEANUP ---
-def load_and_clean_history():
-    if not os.path.exists(HISTORY_FILE) or os.path.getsize(HISTORY_FILE) == 0:
-        return pd.DataFrame()
-
-    try:
-        df = pd.read_csv(HISTORY_FILE, on_bad_lines="skip", engine="python")
-        if df.empty:
-            return pd.DataFrame()
-
-        df.columns = df.columns.str.strip()
-
-        if "Timestamp" in df.columns:
-            df["Parsed_Time"] = pd.to_datetime(df["Timestamp"], errors="coerce")
-            df = df.dropna(subset=["Parsed_Time"])
-
-            cutoff_time = datetime.now() - timedelta(hours=48)
-            recent_df = df[df["Parsed_Time"] >= cutoff_time].copy()
-
-            if len(recent_df) < len(df):
-                save_df = recent_df.drop(columns=["Parsed_Time"])
-                save_df.to_csv(HISTORY_FILE, index=False, encoding="utf-8")
-
-            recent_df = recent_df.drop(columns=["Parsed_Time"])
-            return recent_df
-
-        return df
-    except Exception as e:
-        st.error(f"⚠️ CSV Read Error: {e}")
-        return pd.DataFrame()
-
-
-# --- 1. MAIN UI ---
-st.markdown("## 📜 Email Campaign History (Last 48 Hours)")
-st.caption(
-    "Page 5 se linked history. 48 hours se purana data automatically delete ho jata hai."
-)
-
-df = load_and_clean_history()
-
-if df.empty:
-    st.info("ℹ️ Abhi tak koi 48 hours ke andar ka history record nahi hai.")
+if not st.session_state.get("authenticated", False):
+    st.subheader("🔒 Page Locked")
+    password_input = st.text_input("Enter password to unlock page:", type="password")
+    correct_password = st.secrets.get("APP_PASSWORD", "admin123")
+    if st.button("Unlock"):
+        if password_input == correct_password:
+            st.session_state["authenticated"] = True
+            st.success("Unlocked successfully!")
+            st.rerun()
+        else:
+            st.error("Incorrect password. Please try again.")
     st.stop()
 
-# --- 2. SUMMARY METRICS ---
-col1, col2, col3, col4 = st.columns(4)
-total_logs = len(df)
-col1.metric("Total Sent/Attempted", total_logs)
+# --- 1. SUPABASE CLIENT INIT ---
+@st.cache_resource
+def get_supabase_client():
+    if "supabase" in st.secrets:
+        try:
+            return create_client(st.secrets["supabase"]["url"], st.secrets["supabase"]["key"])
+        except Exception as e:
+            st.error(f"Supabase Connection Error: {e}")
+            return None
+    return None
 
-if "Status" in df.columns:
-    sent_count = df[
-        df["Status"].astype(str).str.contains("Sent|✅", case=False, na=False)
-    ].shape[0]
-    failed_count = df[
-        df["Status"]
-        .astype(str)
-        .str.contains("Failed|Error|❌", case=False, na=False)
-    ].shape[0]
+supabase_client = get_supabase_client()
 
-    col2.metric("Sent ✅", sent_count)
-    col3.metric("Failed ❌", failed_count)
-    success_rate = (
-        round((sent_count / total_logs) * 100, 1) if total_logs > 0 else 0
-    )
-    col4.metric("Success Rate", f"{success_rate}%")
+st.title("📊 Email History & Logs")
 
-st.divider()
+# --- 2. SYNC CSV DATA TO SUPABASE FUNCTIONALITY ---
+if os.path.exists(HISTORY_FILE) and supabase_client:
+    with st.expander("☁️ Sync / Push Local CSV Data to Supabase"):
+        st.write("Aapke local `email_history.csv` file me jo data hai usse yahan se Supabase database me bhej sakte hain:")
+        if st.button("📤 Push CSV Data to Supabase Now"):
+            try:
+                csv_df = pd.read_csv(HISTORY_FILE)
+                if not csv_df.empty:
+                    records = []
+                    for _, row in csv_df.iterrows():
+                        records.append({
+                            "timestamp": str(row.get("Timestamp", "")),
+                            "list_name": str(row.get("List Name", "")),
+                            "sender": str(row.get("Sender", "")),
+                            "recipient": str(row.get("Recipient", "")),
+                            "subject": str(row.get("Subject", "")),
+                            "status": str(row.get("Status", "")),
+                            "reason": str(row.get("Reason", ""))
+                        })
+                    
+                    supabase_client.table("email_history").insert(records).execute()
+                    st.success(f"✅ Successful! Total {len(records)} records Supabase par upload ho gaye.")
+                    st.rerun()
+                else:
+                    st.warning("⚠️ CSV file khali hai!")
+            except Exception as e:
+                st.error(f"❌ Upload Error: {e}")
 
-# --- 3. FILTER & SEARCH ---
-st.markdown("**🔍 Search & Filter Logs**")
-f_col1, f_col2 = st.columns([2, 1])
+# --- 3. FETCH DATA FROM SUPABASE / CSV ---
+def load_history_data():
+    if supabase_client:
+        try:
+            res = supabase_client.table("email_history").select("*").order("id", desc=True).execute()
+            if res.data:
+                df = pd.DataFrame(res.data)
+                cols_rename = {
+                    "timestamp": "Timestamp",
+                    "list_name": "List Name",
+                    "sender": "Sender",
+                    "recipient": "Recipient",
+                    "subject": "Subject",
+                    "status": "Status",
+                    "reason": "Reason"
+                }
+                return df.rename(columns=cols_rename), "Supabase Cloud Database"
+        except Exception as e:
+            st.warning(f"Supabase connection warning: {e}")
 
-search_query = f_col1.text_input("Search (Recipient, Subject, List Name, etc.):")
+    # Fallback to local CSV
+    if os.path.exists(HISTORY_FILE):
+        try:
+            return pd.read_csv(HISTORY_FILE), "Local CSV File"
+        except Exception as e:
+            st.error(f"CSV read error: {e}")
 
-status_filter = "All"
-if "Status" in df.columns:
-    unique_statuses = ["All"] + list(df["Status"].dropna().unique())
-    status_filter = f_col2.selectbox("Filter by Status:", unique_statuses)
+    return pd.DataFrame(), "None"
 
-display_df = df.copy()
+df, data_source = load_history_data()
 
-if search_query:
-    search_mask = (
-        display_df.astype(str)
-        .apply(
-            lambda row: row.str.contains(search_query, case=False, na=False)
+st.caption(f"📌 **Active Data Source:** `{data_source}`")
+
+if df.empty:
+    st.info("ℹ️ Koi history record nahi mila.")
+else:
+    # Filter Controls
+    col_f1, col_f2 = st.columns(2)
+    with col_f1:
+        status_filter = st.multiselect(
+            "Filter by Status:",
+            options=df["Status"].unique().tolist() if "Status" in df.columns else [],
+            default=df["Status"].unique().tolist() if "Status" in df.columns else []
         )
-        .any(axis=1)
-    )
-    display_df = display_df[search_mask]
+    with col_f2:
+        list_filter = st.multiselect(
+            "Filter by List Name:",
+            options=df["List Name"].unique().tolist() if "List Name" in df.columns else [],
+            default=df["List Name"].unique().tolist() if "List Name" in df.columns else []
+        )
 
-if status_filter != "All" and "Status" in display_df.columns:
-    display_df = display_df[display_df["Status"] == status_filter]
+    filtered_df = df.copy()
+    if status_filter and "Status" in filtered_df.columns:
+        filtered_df = filtered_df[filtered_df["Status"].isin(status_filter)]
+    if list_filter and "List Name" in filtered_df.columns:
+        filtered_df = filtered_df[filtered_df["List Name"].isin(list_filter)]
 
-st.dataframe(display_df, use_container_width=True, height=450)
+    # Metrics
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Total Logs", len(df))
+    m2.metric("Filtered Records", len(filtered_df))
+    sent_count = len(df[df["Status"].str.contains("Sent|✅", na=False, case=False)]) if "Status" in df.columns else 0
+    m3.metric("Successful Mails", sent_count)
 
-# --- 4. EXPORT & ACTIONS ---
-st.divider()
-b_col1, b_col2 = st.columns([1, 1])
+    st.divider()
 
-b_col1.download_button(
-    label="📥 Download 48h History (CSV)",
-    data=df.to_csv(index=False).encode("utf-8"),
-    file_name=f"email_history_48h_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-    mime="text/csv",
-    type="primary",
-    use_container_width=True,
-)
+    # Hide internal database columns like id/created_at if present
+    display_cols = [col for col in ["Timestamp", "List Name", "Sender", "Recipient", "Subject", "Status", "Reason"] if col in filtered_df.columns]
+    st.dataframe(filtered_df[display_cols], use_container_width=True)
 
-if b_col2.button(
-    "🗑️ Clear All History Now", type="secondary", use_container_width=True
-):
-    try:
-        if os.path.exists(HISTORY_FILE):
-            os.remove(HISTORY_FILE)
-        st.success("✅ History completely cleared!")
-        st.rerun()
-    except Exception as e:
-        st.error(f"❌ Error clearing file: {e}")
+    # Danger Zone
+    st.divider()
+    with st.expander("⚠️ Danger Zone (Clear History)"):
+        if st.button("🗑️ Clear History Data", type="primary"):
+            if os.path.exists(HISTORY_FILE):
+                os.remove(HISTORY_FILE)
+            if supabase_client:
+                try:
+                    supabase_client.table("email_history").delete().gt("id", 0).execute()
+                except Exception as e:
+                    pass
+            st.success("✅ History Database & CSV clear ho gaya!")
+            st.rerun()
