@@ -8,13 +8,14 @@ import streamlit as st
 st.set_page_config(
     page_title="Email Logs & History Dashboard",
     page_icon="📊",
-    layout="wide",
+    layout="wide",  # Screen ki full width utilize karega
 )
 
 # --- 0. AUTHENTICATION & SESSION CHECK ---
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if parent_dir not in sys.path:
     sys.path.append(parent_dir)
+
 import auth
 
 if hasattr(auth, "require_auth"):
@@ -35,50 +36,89 @@ if not st.session_state.get("authenticated", False):
         else:
             st.error("Incorrect password. Please try again.")
             st.stop()
+    else:
+        st.stop()
 
 # --- CLEAN & FULL PAGE CSS ---
-st.markdown(
-    """
+st.markdown("""
 <style>
-/* Top padding reduce karne ke liye taaki full page utilize ho */
-.block-container {padding-top: 2rem !important; padding-bottom: 2rem !important; max-width: 95% !important; }
-/* Minimal & Sleek Metric Cards */
-div[data-testid="stMetric"] {background-color: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 10px; padding: 14px 20px; transition: all 0.2s ease; }
-div[data-testid="stMetric"]:hover {border-color: rgba(255, 255, 255, 0.2); background-color: rgba(255, 255, 255, 0.05); }
-div[data-testid="stMetricLabel"] {font-size: 0.85rem !important; font-weight: 500 !important; opacity: 0.7; }
-div[data-testid="stMetricValue"] {font-size: 1.7rem !important; font-weight: 600 !important; }
-/* Clean Section Headers */
-h3 {font-weight: 600 !important; font-size: 1.25rem !important; margin-top: 0.8rem !important; }
-/* Soft Info Alert Box */
-div[data-testid="stAlert"] {border-radius: 8px !important; border: 1px solid rgba(59, 130, 246, 0.2) !important; background-color: rgba(59, 130, 246, 0.04) !important; padding: 12px 16px !important; }
-/* Buttons */
-button[kind="primary"] {border-radius: 8px !important; font-weight: 500 !important; }
-div.stButton > button {border-radius: 8px !important; border: 1px solid rgba(255, 255, 255, 0.15) !important; font-weight: 500 !important; }
-/* Full Width Dataframe Tables */
-div[data-testid="stDataFrame"] {border-radius: 8px; overflow: hidden; }
+    /* Top padding reduce karne ke liye taaki full page utilize ho */
+    .block-container {
+        padding-top: 2rem !important;
+        padding-bottom: 2rem !important;
+        max-width: 95% !important;
+    }
+
+    /* Minimal & Sleek Metric Cards */
+    div[data-testid="stMetric"] {
+        background-color: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 10px;
+        padding: 14px 20px;
+        transition: all 0.2s ease;
+    }
+    div[data-testid="stMetric"]:hover {
+        border-color: rgba(255, 255, 255, 0.2);
+        background-color: rgba(255, 255, 255, 0.05);
+    }
+    div[data-testid="stMetricLabel"] {
+        font-size: 0.85rem !important;
+        font-weight: 500 !important;
+        opacity: 0.7;
+    }
+    div[data-testid="stMetricValue"] {
+        font-size: 1.7rem !important;
+        font-weight: 600 !important;
+    }
+
+    /* Clean Section Headers */
+    h3 {
+        font-weight: 600 !important;
+        font-size: 1.25rem !important;
+        margin-top: 0.8rem !important;
+    }
+
+    /* Soft Info Alert Box */
+    div[data-testid="stAlert"] {
+        border-radius: 8px !important;
+        border: 1px solid rgba(59, 130, 246, 0.2) !important;
+        background-color: rgba(59, 130, 246, 0.04) !important;
+        padding: 12px 16px !important;
+    }
+
+    /* Buttons */
+    button[kind="primary"] {
+        border-radius: 8px !important;
+        font-weight: 500 !important;
+    }
+    
+    div.stButton > button {
+        border-radius: 8px !important;
+        border: 1px solid rgba(255, 255, 255, 0.15) !important;
+        font-weight: 500 !important;
+    }
+
+    /* Full Width Dataframe Tables */
+    div[data-testid="stDataFrame"] {
+        border-radius: 8px;
+        overflow: hidden;
+    }
 </style>
-""",
-    unsafe_allow_html=True,
-)
+""", unsafe_allow_html=True)
 
 # --- HEADER SECTION ---
 st.title("📊 Email Logs & History Dashboard")
-st.caption("Yahan aap list-wise bheje gaye sabhi emails ka Date, Time, Subject, Recipient, aur Status dekh sakte hain.")
+st.caption("Yahan aap bheje gaye sabhi emails ka Date, Time, Subject, Recipient, aur Status dekh sakte hain.")
 
 HISTORY_FILE = "email_history.csv"
 
 if os.path.exists(HISTORY_FILE):
     try:
-        # Read CSV safely with on_bad_lines='skip'
-        df = pd.read_csv(HISTORY_FILE, dtype=str, on_bad_lines="skip")
+        df = pd.read_csv(HISTORY_FILE, dtype=str)
 
         if df.empty:
             st.info("ℹ️ History file abhi khali hai.")
         else:
-            # Column fallback for older history logs
-            if "List_Name" not in df.columns:
-                df["List_Name"] = "Default List"
-
             # --- RECENT ON TOP (NEWEST FIRST SORTING) ---
             if "Timestamp" in df.columns:
                 df["Timestamp_dt"] = pd.to_datetime(df["Timestamp"], errors="coerce")
@@ -86,26 +126,25 @@ if os.path.exists(HISTORY_FILE):
             else:
                 df = df.iloc[::-1]
 
-            # Overall Top Stats Summary
-            total_sent = len(df[df["Status"].astype(str).str.contains("Sent", na=False)])
-            total_failed = len(df[df["Status"].astype(str).str.contains("Failed", na=False)])
-            unique_lists = df["List_Name"].nunique()
-
-            col1, col2, col3, col4 = st.columns(4)
+            # Stats Summary
+            col1, col2, col3 = st.columns(3)
             col1.metric("Total Executions", len(df))
-            col2.metric("Successfully Sent", total_sent)
-            col3.metric("Failed Mails", total_failed)
-            col4.metric("Total Lists Bheji Gayi", unique_lists)
+            col2.metric("Successfully Sent", len(df[df["Status"].astype(str).str.contains("Sent", na=False)]))
+            col3.metric("Failed Mails", len(df[df["Status"].astype(str).str.contains("Failed", na=False)]))
 
             st.divider()
 
-            # --- 1. LIST-WISE SUMMARY TABLE ---
-            st.markdown("### 📋 List Wise Campaign Analytics")
+            # --- CAMPAIGN WISE ANALYTICS / NOTES ---
+            st.markdown("### 📋 Campaign Wise Summary Notes")
+
+            if "Timestamp_dt" not in df.columns:
+                df["Timestamp_dt"] = pd.to_datetime(df["Timestamp"], errors="coerce")
+            df["Date_Only"] = df["Timestamp_dt"].dt.strftime("%Y-%m-%d")
 
             summary_records = []
-            grouped = df.groupby(["List_Name", "Subject"], sort=False)
+            grouped = df.groupby(["Subject", "Date_Only"], sort=False)
 
-            for (l_name, subject_title), group in grouped:
+            for (subject_title, date_val), group in grouped:
                 total_cnt = len(group)
                 sent_cnt = len(group[group["Status"].astype(str).str.contains("Sent", na=False)])
                 failed_cnt = len(group[group["Status"].astype(str).str.contains("Failed", na=False)])
@@ -124,54 +163,44 @@ if os.path.exists(HISTORY_FILE):
                     time_range = "N/A"
 
                 summary_records.append({
-                    "List Name": str(l_name),
+                    "Date": date_val if pd.notnull(date_val) else "N/A",
                     "Subject Title": str(subject_title),
-                    "Total Emails": total_cnt,
+                    "Total Contacts": total_cnt,
                     "Sent ✅": sent_cnt,
                     "Failed ❌": failed_cnt,
                     "Time Interval": time_range,
-                    "Duration": time_duration,
+                    "Duration": time_duration
                 })
 
             summary_df = pd.DataFrame(summary_records)
             st.dataframe(summary_df, use_container_width=True)
 
-            # --- 2. DEEP-DIVE LIST CARDS (SHOW RECIPIENT EMAILS) ---
-            st.markdown("### 📌 List Detail Cards (Recipient Emails)")
-            
-            for list_item in df["List_Name"].unique():
-                sub_df = df[df["List_Name"] == list_item]
-                total_list_mails = len(sub_df)
-                sent_list_mails = len(sub_df[sub_df["Status"].astype(str).str.contains("Sent", na=False)])
-                failed_list_mails = len(sub_df[sub_df["Status"].astype(str).str.contains("Failed", na=False)])
-
-                expander_title = (
-                    f"📂 List: **{list_item}** — Total: {total_list_mails} "
-                    f"(✅ {sent_list_mails} Sent | ❌ {failed_list_mails} Failed)"
+            # Individual Clean Notes Cards
+            st.markdown("**📌 Campaign Detail Cards**")
+            for _, item in summary_df.iterrows():
+                clean_title = item["Subject Title"].replace("*", "\\*").replace("_", "\\_")
+                st.info(
+                    f"📅 **Date:** `{item['Date']}` | ✉️ **Subject:** **{clean_title}**\n\n"
+                    f"👉 **Total Contacts:** {item['Total Contacts']} ({item['Sent ✅']} Sent, {item['Failed ❌']} Failed) "
+                    f"| ⏱️ **Time Taken:** `{item['Duration']}` ({item['Time Interval']})"
                 )
-                
-                with st.expander(expander_title):
-                    st.write(f"**Subject:** {sub_df['Subject'].iloc[0] if not sub_df.empty else 'N/A'}")
-                    recipients_display = sub_df[["Timestamp", "Recipient", "Status", "Reason"]]
-                    st.dataframe(recipients_display, use_container_width=True)
 
             st.divider()
 
-            # --- 3. SEARCH & ALL LOGS TABLE ---
+            # --- SEARCH & ALL LOGS TABLE ---
             st.markdown("### 🔍 All Executed Email Logs")
-            search_query = st.text_input("Search Logs (List Name, Email, Subject, Date):")
+            search_query = st.text_input("Search Logs (Subject, Email, Date):")
 
             if search_query:
                 filtered_df = df[
-                    df["Recipient"].astype(str).str.contains(search_query, case=False, na=False)
-                    | df["Subject"].astype(str).str.contains(search_query, case=False, na=False)
-                    | df["List_Name"].astype(str).str.contains(search_query, case=False, na=False)
-                    | df["Timestamp"].astype(str).str.contains(search_query, case=False, na=False)
+                    df["Recipient"].astype(str).str.contains(search_query, case=False, na=False) |
+                    df["Subject"].astype(str).str.contains(search_query, case=False, na=False) |
+                    df["Timestamp"].astype(str).str.contains(search_query, case=False, na=False)
                 ]
             else:
                 filtered_df = df
 
-            display_df = filtered_df.drop(columns=["Timestamp_dt"], errors="ignore")
+            display_df = filtered_df.drop(columns=["Timestamp_dt", "Date_Only"], errors="ignore")
             st.dataframe(display_df, use_container_width=True)
 
             col_down, col_clear = st.columns([3, 1])
@@ -187,6 +216,7 @@ if os.path.exists(HISTORY_FILE):
                     type="primary",
                     use_container_width=True,
                 )
+
             with col_clear:
                 if st.button("🗑️ Clear History", use_container_width=True):
                     os.remove(HISTORY_FILE)
