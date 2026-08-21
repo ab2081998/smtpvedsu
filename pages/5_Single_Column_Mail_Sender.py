@@ -19,7 +19,7 @@ parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if parent_dir not in sys.path:
     sys.path.append(parent_dir)
 
-# Absolute Path for email_history.csv to sync with History Page
+# Absolute Path for email_history.csv
 HISTORY_FILE = os.path.abspath(os.path.join(parent_dir, "email_history.csv"))
 
 try:
@@ -89,7 +89,6 @@ def save_to_history(log_entry, filepath):
 def load_smtp_accounts():
     accounts = []
 
-    # A. Check secrets.toml for nested tables like [smtp_accounts.resend4]
     try:
         if "smtp_accounts" in st.secrets:
             smtp_sec = st.secrets["smtp_accounts"]
@@ -143,7 +142,6 @@ def load_smtp_accounts():
     except Exception:
         pass
 
-    # B. Check smtp_accounts.csv file
     csv_path = os.path.join(parent_dir, "smtp_accounts.csv")
     if os.path.exists(csv_path):
         try:
@@ -274,8 +272,7 @@ with st.sidebar:
 # --- 3. MAIN UI ---
 st.markdown("**📧 Single Column Mail Sender**")
 st.caption(
-    "Send emails using CSV containing only Email IDs. Names will be"
-    " auto-extracted if `{Name}` is used."
+    "Send emails using CSV containing only Email IDs. Names will be auto-extracted if `{Name}` is used."
 )
 
 if st.session_state.get("smtp_email"):
@@ -316,8 +313,7 @@ if uploaded_file is not None:
             )
             st.success(f"✅ CSV Loaded! Total Emails: {len(df)}")
             st.info(
-                f"📌 **List Name:** `{list_name}` | **Targeted Email Column:**"
-                f" `{email_col}`"
+                f"📌 **List Name:** `{list_name}` | **Targeted Email Column:** `{email_col}`"
             )
             st.dataframe(df.head(5), use_container_width=True)
     except Exception as e:
@@ -404,8 +400,7 @@ if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
                 skipped_count += 1
                 progress_bar.progress((index + 1) / total_records)
                 status_text.text(
-                    f"⏩ Skipped {index + 1}/{total_records}: {recipient_email}"
-                    " (Already Sent)"
+                    f"⏩ Skipped {index + 1}/{total_records}: {recipient_email} (Already Sent)"
                 )
                 continue
 
@@ -418,7 +413,6 @@ if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
                     "Sender": sender_email,
                     "Name": recipient_name,
                     "Recipient": recipient_email,
-                    "Email": recipient_email,
                     "Subject": subject_input,
                     "Status": "Failed ❌",
                     "Reason": "Invalid Email",
@@ -473,7 +467,6 @@ if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
                         "Sender": sender_email,
                         "Name": recipient_name,
                         "Recipient": recipient_email,
-                        "Email": recipient_email,
                         "Subject": custom_subject,
                         "Status": "Sent ✅",
                         "Reason": "Success",
@@ -494,7 +487,6 @@ if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
                             "Sender": sender_email,
                             "Name": recipient_name,
                             "Recipient": recipient_email,
-                            "Email": recipient_email,
                             "Subject": custom_subject,
                             "Status": "Failed ❌",
                             "Reason": str(e),
@@ -509,8 +501,7 @@ if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
             time.sleep(0.2)
 
         st.success(
-            f"🎯 **Campaign Finished!** Sent: **{success_count}** | Skipped:"
-            f" **{skipped_count}** | Failed: **{failed_count}**"
+            f"🎯 **Campaign Finished!** Sent: **{success_count}** | Skipped: **{skipped_count}** | Failed: **{failed_count}**"
         )
 
         if logs:
