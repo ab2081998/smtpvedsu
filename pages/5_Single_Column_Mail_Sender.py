@@ -112,7 +112,6 @@ def get_dynamic_senders():
             pw = acc.get("pass") or acc.get("password")
             if em and pw:
                 clean_pw = str(pw).strip().strip('"').strip("'").replace(" ", "")
-                # Resend style SMTP handles 'user' separately from 'email'
                 smtp_user = str(acc.get("user") or em).strip()
                 
                 senders.append({
@@ -192,7 +191,6 @@ with col_right:
             else:
                 df_raw = pd.read_excel(recipients_file, header=None)
             
-            # Extract first column strictly and grab emails
             first_col_vals = df_raw.iloc[:, 0].astype(str).tolist()
             for val in first_col_vals:
                 cleaned_val = val.strip()
@@ -213,10 +211,24 @@ subject_template = st.text_input(
     "Subject Line", value="Important Update"
 )
 
-st.markdown("**Email Body (HTML/Text):**")
-email_body = st_quill(
-    placeholder="Write your email body here...", key="single_col_quill"
+# Editor Type Selection
+editor_mode = st.radio(
+    "Select Editor Mode:",
+    ["Plain / HTML Text Area", "Rich Text Editor (Quill)"],
+    horizontal=True
 )
+
+if editor_mode == "Plain / HTML Text Area":
+    email_body = st.text_area(
+        "Email Body (Plain Text or HTML Code)",
+        value="Hi,\n\nThis is an important update.\n\nBest regards,",
+        height=220
+    )
+else:
+    email_body = st_quill(
+        placeholder="Write your email body here...",
+        key="single_col_quill"
+    )
 
 with st.expander("⚙️ Advanced Settings & Resume Options"):
     delay_between_mails = st.number_input(
@@ -235,6 +247,10 @@ if st.button("🚀 Start Campaign", type="primary", use_container_width=True):
 
     if not recipient_emails:
         st.error("❌ Please upload a valid CSV file containing email addresses!")
+        st.stop()
+
+    if not email_body or not email_body.strip():
+        st.error("❌ Email Body khali nahi ho sakta!")
         st.stop()
 
     already_sent_emails = set()
@@ -278,7 +294,7 @@ if st.button("🚀 Start Campaign", type="primary", use_container_width=True):
 
         curr_sender = selected_senders[sender_index % total_senders]
         sender_email = curr_sender["email"]
-        smtp_login_user = curr_sender["user"]  # Resend requires 'resend' as username
+        smtp_login_user = curr_sender["user"]
         sender_pass = curr_sender["password"]
         active_host = curr_sender["server"]
         active_port = curr_sender["port"]
@@ -295,7 +311,10 @@ if st.button("🚀 Start Campaign", type="primary", use_container_width=True):
             msg["From"] = formataddr((active_sender_name, sender_email))
             msg["To"] = email
             msg["Subject"] = subject_template
-            msg.attach(MIMEText(email_body, "html"))
+            
+            # Format body appropriately
+            mime_type = "html" if editor_mode == "Rich Text Editor (Quill)" or "<" in email_body else "plain"
+            msg.attach(MIMEText(email_body, mime_type))
 
             server = smtplib.SMTP(active_host, active_port, timeout=15)
             server.starttls()
