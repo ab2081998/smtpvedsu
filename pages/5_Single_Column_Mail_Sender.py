@@ -208,26 +208,24 @@ with col_right:
     recipients_file = st.file_uploader(
         "Upload Recipients CSV/Excel", type=["csv", "xlsx"]
     )
-    list_name = st.text_input("Campaign List Name", value="Single_Col_Campaign")
 
     recipient_df = pd.DataFrame()
+    list_name = "Single_Col_Campaign"
+    
     if recipients_file:
+        list_name = os.path.splitext(recipients_file.name)[0]
         try:
             if recipients_file.name.endswith(".csv"):
                 recipient_df = pd.read_csv(recipients_file)
             else:
                 recipient_df = pd.read_excel(recipients_file)
-            st.success(f"✅ Loaded {len(recipient_df)} recipients!")
+            st.success(f"✅ Loaded {len(recipient_df)} recipients! (List: {list_name})")
         except Exception as e:
             st.error(f"❌ File read error: {e}")
 
 st.divider()
 
 st.subheader("3. Campaign Message Setup")
-
-# Default sender name derived automatically from selected TOML account config
-default_sender_name = selected_senders[0].get("name", "Support Team") if selected_senders else "Support Team"
-sender_name = st.text_input("Display Sender Name", value=default_sender_name)
 
 subject_template = st.text_input(
     "Subject Line", value="Important Update for {Name}"
@@ -311,8 +309,8 @@ if st.button("🚀 Start Campaign", type="primary", use_container_width=True):
         active_host = curr_sender.get("server", "smtp.gmail.com")
         active_port = int(curr_sender.get("port", 587))
         
-        # Use account's name if sender_name is empty or fallback to user input
-        active_sender_name = sender_name if sender_name.strip() else curr_sender.get("name", "Support Team")
+        # Display name directly caught from TOML account settings
+        active_sender_name = curr_sender.get("name", "Support Team")
 
         sender_index += 1
 
