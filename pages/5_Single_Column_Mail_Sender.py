@@ -138,25 +138,51 @@ def get_dynamic_senders():
 
     return senders
 
+def make_links_clickable(text):
+    """Converts raw URLs and Emails into clickable <a> HTML tags with https://"""
+    if not text:
+        return ""
+    
+    # 1. Convert plain email addresses to mailto: links
+    email_pattern = r'([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)'
+    text = re.sub(email_pattern, r'<a href="mailto:\1" style="color: #0066cc; text-decoration: underline;">\1</a>', text)
+    
+    # 2. Convert http/https URLs
+    url_pattern = r'(?<!href=")(https?://[^\s<"]+)'
+    text = re.sub(url_pattern, r'<a href="\1" target="_blank" style="color: #0066cc; text-decoration: underline;">\1</a>', text)
+    
+    # 3. Convert www. URLs missing https://
+    www_pattern = r'(?<!href=")(?<!https://)(?<!http://)(www\.[^\s<"]+)'
+    text = re.sub(www_pattern, r'<a href="https://\1" target="_blank" style="color: #0066cc; text-decoration: underline;">\1</a>', text)
+    
+    return text
+
 def convert_to_html(raw_text):
-    """Converts plain text with linebreaks into properly structured HTML mail body."""
+    """Converts plain text into clean, structured HTML with clickable hrefs."""
     if not raw_text:
         return ""
-    # If text is already HTML format, return directly
-    if "<html" in raw_text.lower() or "<div" in raw_text.lower() or "<p>" in raw_text.lower():
+
+    # Check if already containing full HTML tag setup
+    if "<html" in raw_text.lower() or "<body" in raw_text.lower():
         return raw_text
 
-    # Convert newlines to paragraphs and breaks
-    paragraphs = raw_text.split("\n\n")
-    html_paragraphs = [f"<p>{p.replace('\n', '<br>')}</p>" for p in paragraphs if p.strip()]
+    # Make links clickable first
+    formatted_text = make_links_clickable(raw_text)
+
+    # Convert line breaks to HTML paragraphs/breaks
+    paragraphs = formatted_text.split("\n\n")
+    html_paragraphs = [f"<p style='margin-bottom: 12px;'>{p.replace('\n', '<br>')}</p>" for p in paragraphs if p.strip()]
     
-    html_template = f"""
-    <html>
-    <body style="font-family: Arial, sans-serif; font-size: 14px; color: #333333; line-height: 1.6;">
-        {"".join(html_paragraphs)}
-    </body>
-    </html>
-    """
+    html_template = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="font-family: Arial, sans-serif; font-size: 14px; color: #222222; line-height: 1.6; margin: 0; padding: 15px;">
+    {"".join(html_paragraphs)}
+</body>
+</html>"""
     return html_template
 
 st.title("📧 Single Column Email Campaign Sender")
@@ -237,8 +263,8 @@ editor_mode = st.radio(
 
 if editor_mode == "Plain / Standard Text Input":
     email_body = st.text_area(
-        "Email Body (Paste content here - line breaks will automatically format as HTML)",
-        value="Managing employee performance is a critical role for all leaders...\n\nRegister Now",
+        "Email Body (Paste content here - URLs/links will auto-convert to clickable links)",
+        value="Managing employee performance...\n\nRegister Now: https://www.webinarbrite.com\nNeed assistance? cs@webinarbrite.com",
         height=280
     )
 else:
@@ -270,7 +296,7 @@ if st.button("🚀 Start Campaign", type="primary", use_container_width=True):
         st.error("❌ Email Body khali nahi ho sakta!")
         st.stop()
 
-    # Always format to proper HTML structure
+    # Convert text & raw URLs into working HTML hrefs
     html_formatted_body = convert_to_html(email_body)
 
     already_sent_emails = set()
@@ -332,7 +358,7 @@ if st.button("🚀 Start Campaign", type="primary", use_container_width=True):
             msg["To"] = email
             msg["Subject"] = subject_template
             
-            # Send explicitly as HTML content
+            # Send HTML body strictly
             msg.attach(MIMEText(html_formatted_body, "html", "utf-8"))
 
             server = smtplib.SMTP(active_host, active_port, timeout=15)
