@@ -9,7 +9,7 @@ import sys
 import time
 import pandas as pd
 import streamlit as st
-from streamlit_quill import st_quill
+from streamlit_ckeditor import st_ckeditor
 
 # --- 0. AUTHENTICATION & PATH SETUP ---
 if "authenticated" not in st.session_state:
@@ -138,52 +138,24 @@ def get_dynamic_senders():
 
     return senders
 
-def make_links_clickable(text):
-    """Converts raw URLs and Emails into clickable <a> HTML tags with https://"""
-    if not text:
+def convert_to_full_html(html_content):
+    """Wraps CKEditor HTML output with standard Email wrapper tags."""
+    if not html_content:
         return ""
     
-    # 1. Convert plain email addresses to mailto: links
-    email_pattern = r'([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)'
-    text = re.sub(email_pattern, r'<a href="mailto:\1" style="color: #0066cc; text-decoration: underline;">\1</a>', text)
-    
-    # 2. Convert http/https URLs
-    url_pattern = r'(?<!href=")(https?://[^\s<"]+)'
-    text = re.sub(url_pattern, r'<a href="\1" target="_blank" style="color: #0066cc; text-decoration: underline;">\1</a>', text)
-    
-    # 3. Convert www. URLs missing https://
-    www_pattern = r'(?<!href=")(?<!https://)(?<!http://)(www\.[^\s<"]+)'
-    text = re.sub(www_pattern, r'<a href="https://\1" target="_blank" style="color: #0066cc; text-decoration: underline;">\1</a>', text)
-    
-    return text
+    if "<html" in html_content.lower() or "<body" in html_content.lower():
+        return html_content
 
-def convert_to_html(raw_text):
-    """Converts plain text into clean, structured HTML with clickable hrefs."""
-    if not raw_text:
-        return ""
-
-    # Check if already containing full HTML tag setup
-    if "<html" in raw_text.lower() or "<body" in raw_text.lower():
-        return raw_text
-
-    # Make links clickable first
-    formatted_text = make_links_clickable(raw_text)
-
-    # Convert line breaks to HTML paragraphs/breaks
-    paragraphs = formatted_text.split("\n\n")
-    html_paragraphs = [f"<p style='margin-bottom: 12px;'>{p.replace('\n', '<br>')}</p>" for p in paragraphs if p.strip()]
-    
-    html_template = f"""<!DOCTYPE html>
+    return f"""<!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
 <body style="font-family: Arial, sans-serif; font-size: 14px; color: #222222; line-height: 1.6; margin: 0; padding: 15px;">
-    {"".join(html_paragraphs)}
+    {html_content}
 </body>
 </html>"""
-    return html_template
 
 st.title("📧 Single Column Email Campaign Sender")
 
@@ -255,23 +227,17 @@ subject_template = st.text_input(
     "Subject Line", value="Important Update"
 )
 
-editor_mode = st.radio(
-    "Select Editor Mode:",
-    ["Plain / Standard Text Input", "Rich Text Editor (Quill)"],
-    horizontal=True
-)
+st.markdown("**Compose Email with CKEditor:**")
 
-if editor_mode == "Plain / Standard Text Input":
-    email_body = st.text_area(
-        "Email Body (Paste content here - URLs/links will auto-convert to clickable links)",
-        value="Managing employee performance...\n\nRegister Now: https://www.webinarbrite.com\nNeed assistance? cs@webinarbrite.com",
-        height=280
-    )
-else:
-    email_body = st_quill(
-        placeholder="Write your email body here...",
-        key="single_col_quill"
-    )
+default_content = """<p>Managing employee performance is a critical role for all leaders...</p>
+<p><a href="https://www.webinarbrite.com" target="_blank">Register Now</a></p>
+<p>Need assistance? <a href="mailto:cs@webinarbrite.com">cs@webinarbrite.com</a></p>"""
+
+# Using CKEditor component
+email_body = st_ckeditor(
+    value=default_content,
+    key="ckeditor_email_body"
+)
 
 with st.expander("⚙️ Advanced Settings & Resume Options"):
     delay_between_mails = st.number_input(
@@ -296,8 +262,8 @@ if st.button("🚀 Start Campaign", type="primary", use_container_width=True):
         st.error("❌ Email Body khali nahi ho sakta!")
         st.stop()
 
-    # Convert text & raw URLs into working HTML hrefs
-    html_formatted_body = convert_to_html(email_body)
+    # Wrap CKEditor HTML into a complete mail template
+    html_formatted_body = convert_to_full_html(email_body)
 
     already_sent_emails = set()
     if enable_auto_resume:
@@ -358,7 +324,7 @@ if st.button("🚀 Start Campaign", type="primary", use_container_width=True):
             msg["To"] = email
             msg["Subject"] = subject_template
             
-            # Send HTML body strictly
+            # Send HTML body from CKEditor
             msg.attach(MIMEText(html_formatted_body, "html", "utf-8"))
 
             server = smtplib.SMTP(active_host, active_port, timeout=15)
