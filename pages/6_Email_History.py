@@ -36,19 +36,19 @@ if not st.session_state.get("authenticated", False):
         else:
             st.error("Incorrect password. Please try again.")
             st.stop()
-    else:
-        st.stop()
+else:
+    st.stop()
 
 # --- CLEAN & FULL PAGE CSS ---
-st.markdown("""
-<style>
+st.markdown(
+    """
+    <style>
     /* Top padding reduce karne ke liye taaki full page utilize ho */
     .block-container {
         padding-top: 2rem !important;
         padding-bottom: 2rem !important;
         max-width: 95% !important;
     }
-
     /* Minimal & Sleek Metric Cards */
     div[data-testid="stMetric"] {
         background-color: rgba(255, 255, 255, 0.03);
@@ -70,14 +70,12 @@ st.markdown("""
         font-size: 1.7rem !important;
         font-weight: 600 !important;
     }
-
     /* Clean Section Headers */
     h3 {
         font-weight: 600 !important;
         font-size: 1.25rem !important;
         margin-top: 0.8rem !important;
     }
-
     /* Soft Info Alert Box */
     div[data-testid="stAlert"] {
         border-radius: 8px !important;
@@ -85,26 +83,25 @@ st.markdown("""
         background-color: rgba(59, 130, 246, 0.04) !important;
         padding: 12px 16px !important;
     }
-
     /* Buttons */
     button[kind="primary"] {
         border-radius: 8px !important;
         font-weight: 500 !important;
     }
-    
     div.stButton > button {
         border-radius: 8px !important;
         border: 1px solid rgba(255, 255, 255, 0.15) !important;
         font-weight: 500 !important;
     }
-
     /* Full Width Dataframe Tables */
     div[data-testid="stDataFrame"] {
         border-radius: 8px;
         overflow: hidden;
     }
-</style>
-""", unsafe_allow_html=True)
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 # --- HEADER SECTION ---
 st.title("📊 Email Logs & History Dashboard")
@@ -149,6 +146,13 @@ if os.path.exists(HISTORY_FILE):
                 sent_cnt = len(group[group["Status"].astype(str).str.contains("Sent", na=False)])
                 failed_cnt = len(group[group["Status"].astype(str).str.contains("Failed", na=False)])
 
+                # Extract List Name if available in columns
+                list_name = "N/A"
+                for col in ["List_Name", "List Name", "List", "ListName"]:
+                    if col in group.columns and not group[col].isna().all():
+                        list_name = group[col].iloc[0]
+                        break
+
                 start_t = group["Timestamp_dt"].min()
                 end_t = group["Timestamp_dt"].max()
 
@@ -162,15 +166,18 @@ if os.path.exists(HISTORY_FILE):
                     time_duration = "N/A"
                     time_range = "N/A"
 
-                summary_records.append({
-                    "Date": date_val if pd.notnull(date_val) else "N/A",
-                    "Subject Title": str(subject_title),
-                    "Total Contacts": total_cnt,
-                    "Sent ✅": sent_cnt,
-                    "Failed ❌": failed_cnt,
-                    "Time Interval": time_range,
-                    "Duration": time_duration
-                })
+                summary_records.append(
+                    {
+                        "Date": date_val if pd.notnull(date_val) else "N/A",
+                        "Subject Title": str(subject_title),
+                        "List Name": list_name,
+                        "Total Contacts": total_cnt,
+                        "Sent ✅": sent_cnt,
+                        "Failed ❌": failed_cnt,
+                        "Time Interval": time_range,
+                        "Duration": time_duration,
+                    }
+                )
 
             summary_df = pd.DataFrame(summary_records)
             st.dataframe(summary_df, use_container_width=True)
@@ -180,8 +187,9 @@ if os.path.exists(HISTORY_FILE):
             for _, item in summary_df.iterrows():
                 clean_title = item["Subject Title"].replace("*", "\\*").replace("_", "\\_")
                 st.info(
-                    f"📅 **Date:** `{item['Date']}` | ✉️ **Subject:** **{clean_title}**\n\n"
-                    f"👉 **Total Contacts:** {item['Total Contacts']} ({item['Sent ✅']} Sent, {item['Failed ❌']} Failed) "
+                    f"📅 **Date:** `{item['Date']}` | ✉️ **Subject:** **{clean_title}** | 📋 **List:** `{item['List Name']}`\n\n"
+                    f"👉 **Sent Emails:** **{item['Sent ✅']}** / {item['Total Contacts']} Total "
+                    f"({item['Failed ❌']} Failed) "
                     f"| ⏱️ **Time Taken:** `{item['Duration']}` ({item['Time Interval']})"
                 )
 
@@ -193,9 +201,9 @@ if os.path.exists(HISTORY_FILE):
 
             if search_query:
                 filtered_df = df[
-                    df["Recipient"].astype(str).str.contains(search_query, case=False, na=False) |
-                    df["Subject"].astype(str).str.contains(search_query, case=False, na=False) |
-                    df["Timestamp"].astype(str).str.contains(search_query, case=False, na=False)
+                    df["Recipient"].astype(str).str.contains(search_query, case=False, na=False)
+                    | df["Subject"].astype(str).str.contains(search_query, case=False, na=False)
+                    | df["Timestamp"].astype(str).str.contains(search_query, case=False, na=False)
                 ]
             else:
                 filtered_df = df
