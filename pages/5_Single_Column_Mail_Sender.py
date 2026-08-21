@@ -102,8 +102,6 @@ def save_to_history(log_entry):
 
 def get_dynamic_senders():
     senders = []
-    
-    # Priority 1: secrets.toml ([smtp_accounts.*] format)
     if "smtp_accounts" in st.secrets:
         smtp_accs = st.secrets["smtp_accounts"]
         for acc_key in smtp_accs:
@@ -123,7 +121,6 @@ def get_dynamic_senders():
                     "port": int(acc.get("port", 587))
                 })
 
-    # Priority 2: secrets.toml (smtp.accounts format)
     if not senders and "smtp" in st.secrets and "accounts" in st.secrets["smtp"]:
         for idx, acc in enumerate(st.secrets["smtp"]["accounts"]):
             if "email" in acc and "password" in acc:
@@ -140,6 +137,27 @@ def get_dynamic_senders():
                 })
 
     return senders
+
+def convert_to_html(raw_text):
+    """Converts plain text with linebreaks into properly structured HTML mail body."""
+    if not raw_text:
+        return ""
+    # If text is already HTML format, return directly
+    if "<html" in raw_text.lower() or "<div" in raw_text.lower() or "<p>" in raw_text.lower():
+        return raw_text
+
+    # Convert newlines to paragraphs and breaks
+    paragraphs = raw_text.split("\n\n")
+    html_paragraphs = [f"<p>{p.replace('\n', '<br>')}</p>" for p in paragraphs if p.strip()]
+    
+    html_template = f"""
+    <html>
+    <body style="font-family: Arial, sans-serif; font-size: 14px; color: #333333; line-height: 1.6;">
+        {"".join(html_paragraphs)}
+    </body>
+    </html>
+    """
+    return html_template
 
 st.title("📧 Single Column Email Campaign Sender")
 
@@ -211,18 +229,17 @@ subject_template = st.text_input(
     "Subject Line", value="Important Update"
 )
 
-# Editor Type Selection
 editor_mode = st.radio(
     "Select Editor Mode:",
-    ["Plain / HTML Text Area", "Rich Text Editor (Quill)"],
+    ["Plain / Standard Text Input", "Rich Text Editor (Quill)"],
     horizontal=True
 )
 
-if editor_mode == "Plain / HTML Text Area":
+if editor_mode == "Plain / Standard Text Input":
     email_body = st.text_area(
-        "Email Body (Plain Text or HTML Code)",
-        value="Hi,\n\nThis is an important update.\n\nBest regards,",
-        height=220
+        "Email Body (Paste content here - line breaks will automatically format as HTML)",
+        value="Managing employee performance is a critical role for all leaders...\n\nRegister Now",
+        height=280
     )
 else:
     email_body = st_quill(
@@ -252,6 +269,9 @@ if st.button("🚀 Start Campaign", type="primary", use_container_width=True):
     if not email_body or not email_body.strip():
         st.error("❌ Email Body khali nahi ho sakta!")
         st.stop()
+
+    # Always format to proper HTML structure
+    html_formatted_body = convert_to_html(email_body)
 
     already_sent_emails = set()
     if enable_auto_resume:
@@ -312,9 +332,8 @@ if st.button("🚀 Start Campaign", type="primary", use_container_width=True):
             msg["To"] = email
             msg["Subject"] = subject_template
             
-            # Format body appropriately
-            mime_type = "html" if editor_mode == "Rich Text Editor (Quill)" or "<" in email_body else "plain"
-            msg.attach(MIMEText(email_body, mime_type))
+            # Send explicitly as HTML content
+            msg.attach(MIMEText(html_formatted_body, "html", "utf-8"))
 
             server = smtplib.SMTP(active_host, active_port, timeout=15)
             server.starttls()
