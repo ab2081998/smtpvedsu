@@ -35,8 +35,6 @@ if not st.session_state.get("authenticated", False):
             st.rerun()
         else:
             st.error("Incorrect password. Please try again.")
-            st.stop()
-else:
     st.stop()
 
 # --- CLEAN & FULL PAGE CSS ---
