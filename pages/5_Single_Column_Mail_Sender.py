@@ -201,22 +201,7 @@ with col_left:
             ]
             st.success(f"✅ Selected: {selected_senders[0]['email']}")
     else:
-        st.warning("⚠️ No secrets.toml accounts found! Enter manually below:")
-
-    sender_text = st.text_area(
-        "Or Enter Manual Sender Accounts",
-        height=100,
-        placeholder="email:password or email,password"
-    )
-    
-    if sender_text.strip():
-        selected_senders = parse_credentials(sender_text)
-
-    default_host = selected_senders[0].get("server", "smtp.gmail.com") if selected_senders else "smtp.gmail.com"
-    default_port = int(selected_senders[0].get("port", 587)) if selected_senders else 587
-    
-    smtp_host = st.text_input("SMTP Server", value=default_host)
-    smtp_port = st.number_input("SMTP Port", value=default_port, step=1)
+        st.error("❌ No accounts found in secrets.toml!")
 
 with col_right:
     st.subheader("2. Recipient Data Setup")
@@ -239,7 +224,11 @@ with col_right:
 st.divider()
 
 st.subheader("3. Campaign Message Setup")
-sender_name = st.text_input("Display Sender Name", value="Support Team")
+
+# Default sender name derived automatically from selected TOML account config
+default_sender_name = selected_senders[0].get("name", "Support Team") if selected_senders else "Support Team"
+sender_name = st.text_input("Display Sender Name", value=default_sender_name)
+
 subject_template = st.text_input(
     "Subject Line", value="Important Update for {Name}"
 )
@@ -261,7 +250,7 @@ st.divider()
 
 if st.button("🚀 Start Campaign", type="primary", use_container_width=True):
     if not selected_senders:
-        st.error("❌ Select an account or enter credentials manually!")
+        st.error("❌ Please setup accounts in secrets.toml!")
         st.stop()
 
     if recipient_df.empty:
@@ -319,9 +308,12 @@ if st.button("🚀 Start Campaign", type="primary", use_container_width=True):
         sender_email = curr_sender["email"]
         sender_pass = curr_sender["password"]
         
-        active_host = curr_sender.get("server") or smtp_host
-        active_port = int(curr_sender.get("port") or smtp_port)
+        active_host = curr_sender.get("server", "smtp.gmail.com")
+        active_port = int(curr_sender.get("port", 587))
         
+        # Use account's name if sender_name is empty or fallback to user input
+        active_sender_name = sender_name if sender_name.strip() else curr_sender.get("name", "Support Team")
+
         sender_index += 1
 
         rec_name = str(row.get("Name", row.get("name", "Customer")))
@@ -335,7 +327,7 @@ if st.button("🚀 Start Campaign", type="primary", use_container_width=True):
 
         try:
             msg = MIMEMultipart("alternative")
-            msg["From"] = formataddr((sender_name, sender_email))
+            msg["From"] = formataddr((active_sender_name, sender_email))
             msg["To"] = email
             msg["Subject"] = custom_subject
             msg.attach(MIMEText(custom_body, "html"))
