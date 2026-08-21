@@ -100,31 +100,6 @@ def save_to_history(log_entry):
     except Exception as err:
         st.error(f"⚠️ History write error: {err}")
 
-def parse_multi_line_input(text):
-    if not text:
-        return []
-    return [
-        line.strip()
-        for line in re.split(r"[\n,;]+", text)
-        if line and line.strip()
-    ]
-
-def parse_credentials(text):
-    creds = []
-    lines = parse_multi_line_input(text)
-    for line in lines:
-        if ":" in line:
-            parts = line.split(":", 1)
-            creds.append(
-                {"email": parts[0].strip(), "password": parts[1].strip()}
-            )
-        elif "," in line:
-            parts = line.split(",", 1)
-            creds.append(
-                {"email": parts[0].strip(), "password": parts[1].strip()}
-            )
-    return creds
-
 def get_dynamic_senders():
     senders = []
     
@@ -137,45 +112,33 @@ def get_dynamic_senders():
             pw = acc.get("pass") or acc.get("password")
             if em and pw:
                 senders.append({
-                    "name": acc.get("name", acc_key),
+                    "name": acc.get("name", acc_key).strip(),
                     "email": str(em).strip(),
-                    "password": str(pw).strip(),
-                    "server": acc.get("server", "smtp.gmail.com"),
-                    "port": acc.get("port", 587)
+                    "password": str(pw).strip().replace(" ", ""),
+                    "server": str(acc.get("server", "smtp.gmail.com")).strip(),
+                    "port": int(acc.get("port", 587))
                 })
 
-    # Priority 2: secrets.toml (SMTP_SENDERS string format)
-    if not senders and "SMTP_SENDERS" in st.secrets:
-        parsed = parse_credentials(st.secrets["SMTP_SENDERS"])
-        for idx, item in enumerate(parsed):
-            senders.append({
-                "name": f"Account {idx+1}",
-                "email": item["email"],
-                "password": item["password"],
-                "server": "smtp.gmail.com",
-                "port": 587
-            })
-
-    # Priority 3: secrets.toml (smtp.accounts format)
+    # Priority 2: secrets.toml (smtp.accounts format)
     if not senders and "smtp" in st.secrets and "accounts" in st.secrets["smtp"]:
         for idx, acc in enumerate(st.secrets["smtp"]["accounts"]):
             if "email" in acc and "password" in acc:
                 senders.append({
-                    "name": acc.get("name", f"Account {idx+1}"),
+                    "name": str(acc.get("name", f"Account {idx+1}")).strip(),
                     "email": str(acc["email"]).strip(),
-                    "password": str(acc["password"]).strip(),
-                    "server": acc.get("server", "smtp.gmail.com"),
-                    "port": acc.get("port", 587)
+                    "password": str(acc["password"]).strip().replace(" ", ""),
+                    "server": str(acc.get("server", "smtp.gmail.com")).strip(),
+                    "port": int(acc.get("port", 587))
                 })
 
     return senders
 
-st.title("📧 Single Column Campaign Sender (With Auto Resume)")
+st.title("📧 Single Column Email Campaign Sender")
 
 col_left, col_right = st.columns(2)
 
 with col_left:
-    st.subheader("1. SMTP Senders Setup")
+    st.subheader("1. SMTP Sender Selection")
     
     available_senders = get_dynamic_senders()
     selected_senders = []
@@ -201,12 +164,12 @@ with col_left:
             ]
             st.success(f"✅ Selected: {selected_senders[0]['email']}")
     else:
-        st.error("❌ No accounts found in secrets.toml!")
+        st.error("❌ No valid accounts found in secrets.toml!")
 
 with col_right:
-    st.subheader("2. Recipient Data Setup")
+    st.subheader("2. Recipient Data (Single Column)")
     recipients_file = st.file_uploader(
-        "Upload Recipients CSV/Excel", type=["csv", "xlsx"]
+        "Upload CSV/Excel (Single Column Email File)", type=["csv", "xlsx"]
     )
 
     recipient_df = pd.DataFrame()
@@ -216,10 +179,16 @@ with col_right:
         list_name = os.path.splitext(recipients_file.name)[0]
         try:
             if recipients_file.name.endswith(".csv"):
-                recipient_df = pd.read_csv(recipients_file)
+                recipient_df = pd.read_csv(recipients_file, header=None)
             else:
-                recipient_df = pd.read_excel(recipients_file)
-            st.success(f"✅ Loaded {len(recipient_df)} recipients! (List: {list_name})")
+                recipient_df = pd.read_excel(recipients_file, header=None)
+            
+            # Agar file me headers/column name pehle se hai toh auto-skip logic
+            first_val = str(recipient_df.iloc[0, 0]).strip()
+            if "@" not in first_val:
+                recipient_df = recipient_df.iloc[1:].reset_index(drop=True)
+                
+            st.success(f"✅ Loaded {len(recipient_df)} email addresses from list '{list_name}'")
         except Exception as e:
             st.error(f"❌ File read error: {e}")
 
@@ -228,12 +197,12 @@ st.divider()
 st.subheader("3. Campaign Message Setup")
 
 subject_template = st.text_input(
-    "Subject Line", value="Important Update for {Name}"
+    "Subject Line", value="Important Update"
 )
 
 st.markdown("**Email Body (HTML/Text):**")
 email_body = st_quill(
-    placeholder="Write your email here...", key="single_col_quill"
+    placeholder="Write your email body here...", key="single_col_quill"
 )
 
 with st.expander("⚙️ Advanced Settings & Resume Options"):
@@ -248,11 +217,11 @@ st.divider()
 
 if st.button("🚀 Start Campaign", type="primary", use_container_width=True):
     if not selected_senders:
-        st.error("❌ Please setup accounts in secrets.toml!")
+        st.error("❌ Please setup valid accounts in secrets.toml!")
         st.stop()
 
     if recipient_df.empty:
-        st.error("❌ Valid Recipient file upload karein!")
+        st.error("❌ Recipient file upload karein!")
         st.stop()
 
     already_sent_emails = set()
@@ -280,7 +249,6 @@ if st.button("🚀 Start Campaign", type="primary", use_container_width=True):
             )
 
     progress_bar = st.progress(0)
-    status_text = st.empty()
     logs_container = st.container()
 
     total_recipients = len(recipient_df)
@@ -288,13 +256,14 @@ if st.button("🚀 Start Campaign", type="primary", use_container_width=True):
     total_senders = len(selected_senders)
 
     for idx, row in recipient_df.iterrows():
-        email = ""
-        for col in recipient_df.columns:
-            if "email" in col.lower() or "recipient" in col.lower():
-                email = str(row[col]).strip()
-                break
-        if not email and len(recipient_df.columns) > 0:
-            email = str(row.iloc[0]).strip()
+        # Single column reading logic
+        raw_email = str(row.iloc[0]).strip()
+        
+        # Simple email validation via regex
+        email_match = re.search(r"[\w\.-]+@[\w\.-]+\.\w+", raw_email)
+        if not email_match:
+            continue
+        email = email_match.group(0)
 
         if enable_auto_resume and email.lower() in already_sent_emails:
             with logs_container:
@@ -305,19 +274,11 @@ if st.button("🚀 Start Campaign", type="primary", use_container_width=True):
         curr_sender = selected_senders[sender_index % total_senders]
         sender_email = curr_sender["email"]
         sender_pass = curr_sender["password"]
-        
-        active_host = curr_sender.get("server", "smtp.gmail.com")
-        active_port = int(curr_sender.get("port", 587))
-        
-        # Display name directly caught from TOML account settings
-        active_sender_name = curr_sender.get("name", "Support Team")
+        active_host = curr_sender["server"]
+        active_port = curr_sender["port"]
+        active_sender_name = curr_sender["name"]
 
         sender_index += 1
-
-        rec_name = str(row.get("Name", row.get("name", "Customer")))
-
-        custom_subject = subject_template.replace("{Name}", rec_name)
-        custom_body = email_body.replace("{Name}", rec_name)
 
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         is_success = False
@@ -327,8 +288,8 @@ if st.button("🚀 Start Campaign", type="primary", use_container_width=True):
             msg = MIMEMultipart("alternative")
             msg["From"] = formataddr((active_sender_name, sender_email))
             msg["To"] = email
-            msg["Subject"] = custom_subject
-            msg.attach(MIMEText(custom_body, "html"))
+            msg["Subject"] = subject_template
+            msg.attach(MIMEText(email_body, "html"))
 
             server = smtplib.SMTP(active_host, active_port, timeout=15)
             server.starttls()
@@ -348,9 +309,8 @@ if st.button("🚀 Start Campaign", type="primary", use_container_width=True):
             "Timestamp": now_str,
             "List Name": list_name,
             "Sender": sender_email,
-            "Name": rec_name,
             "Recipient": email,
-            "Subject": custom_subject,
+            "Subject": subject_template,
             "Status": "Sent ✅" if is_success else "Failed ❌",
             "Reason": error_reason,
         }
