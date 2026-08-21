@@ -52,29 +52,50 @@ supabase_client = get_supabase_client()
 
 st.title("📊 Email History & Logs")
 
-# --- 2. SYNC CSV DATA TO SUPABASE FUNCTIONALITY ---
+# --- 2. SYNC CSV DATA TO SUPABASE (WITH DEDUPLICATION) ---
 if os.path.exists(HISTORY_FILE) and supabase_client:
     with st.expander("☁️ Sync / Push Local CSV Data to Supabase"):
-        st.write("Aapke local `email_history.csv` file me jo data hai usse yahan se Supabase database me bhej sakte hain:")
+        st.write("Local `email_history.csv` file se naye records Supabase database me sync karein:")
         if st.button("📤 Push CSV Data to Supabase Now"):
             try:
                 csv_df = pd.read_csv(HISTORY_FILE)
                 if not csv_df.empty:
+                    # 1. Fetch existing timestamps & recipients from Supabase to prevent duplicates
+                    existing_data = supabase_client.table("email_history").select("timestamp, recipient").execute()
+                    existing_keys = set()
+                    if existing_data.data:
+                        for item in existing_data.data:
+                            existing_keys.add(f"{item.get('timestamp')}_{item.get('recipient')}")
+
                     records = []
+                    skipped_count = 0
+
                     for _, row in csv_df.iterrows():
+                        ts = str(row.get("Timestamp", "")).strip()
+                        rec = str(row.get("Recipient", "")).strip()
+                        key = f"{ts}_{rec}"
+
+                        # Skip if record already exists in Supabase
+                        if key in existing_keys:
+                            skipped_count += 1
+                            continue
+
                         records.append({
-                            "timestamp": str(row.get("Timestamp", "")),
+                            "timestamp": ts,
                             "list_name": str(row.get("List Name", "")),
                             "sender": str(row.get("Sender", "")),
-                            "recipient": str(row.get("Recipient", "")),
+                            "recipient": rec,
                             "subject": str(row.get("Subject", "")),
                             "status": str(row.get("Status", "")),
                             "reason": str(row.get("Reason", ""))
                         })
-                    
-                    supabase_client.table("email_history").insert(records).execute()
-                    st.success(f"✅ Successful! Total {len(records)} records Supabase par upload ho gaye.")
-                    st.rerun()
+
+                    if records:
+                        supabase_client.table("email_history").insert(records).execute()
+                        st.success(f"✅ Successful! {len(records)} naye records upload hue. ({skipped_count} duplicate records skip hue)")
+                        st.rerun()
+                    else:
+                        st.info(f"ℹ️ Saare records pehle se Supabase me maujood hain. ({skipped_count} records skipped)")
                 else:
                     st.warning("⚠️ CSV file khali hai!")
             except Exception as e:
