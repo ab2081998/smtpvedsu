@@ -62,7 +62,7 @@ except ImportError:
                 st.error("❌ Incorrect password!")
                 st.stop()
 
-# --- 1. HISTORY HELPERS ---
+# --- 1. HISTORY & RETENTION HELPERS ---
 def clean_and_load_history():
     if not os.path.exists(HISTORY_FILE) or os.path.getsize(HISTORY_FILE) == 0:
         return pd.DataFrame()
@@ -152,29 +152,26 @@ def make_links_clickable(text):
 
     return text
 
-def build_original_styled_html(raw_content, is_quill_active):
-    """Preserves EXACT layout, headings, bold text, bullets, and spacing."""
-    if not raw_content:
+def convert_to_html(raw_text, is_rich_text=False):
+    """Preserves Quill HTML layout & formats plain text correctly."""
+    if not raw_text:
         return ""
 
-    if is_quill_active:
-        # Quill already provides valid HTML, keep as is
-        body_html = raw_content
+    if is_rich_text:
+        body_content = raw_text
     else:
-        # Plain text input ko formatted HTML me convert karein
-        paragraphs = raw_content.split("\n")
-        formatted_paragraphs = []
-        for p in paragraphs:
-            p_str = p.strip()
-            if not p_str:
-                formatted_paragraphs.append("<br>")
-            elif p_str.startswith("•") or p_str.startswith("-"):
-                clean_bullet = p_str.lstrip("•-").strip()
-                formatted_paragraphs.append(f"<li style='margin-bottom: 6px;'>{make_links_clickable(clean_bullet)}</li>")
+        lines = raw_text.split("\n")
+        formatted_lines = []
+        for line in lines:
+            line_str = line.strip()
+            if not line_str:
+                formatted_lines.append("<br>")
+            elif line_str.startswith("•") or line_str.startswith("-"):
+                clean_bullet = line_str.lstrip("•-").strip()
+                formatted_lines.append(f"<li style='margin-bottom: 6px;'>{make_links_clickable(clean_bullet)}</li>")
             else:
-                formatted_paragraphs.append(f"<p style='margin: 0 0 12px 0;'>{make_links_clickable(p_str)}</p>")
-        
-        body_html = "".join(formatted_paragraphs)
+                formatted_lines.append(f"<p style='margin: 0 0 12px 0;'>{make_links_clickable(line_str)}</p>")
+        body_content = "".join(formatted_lines)
 
     return f"""<!DOCTYPE html>
 <html>
@@ -182,44 +179,18 @@ def build_original_styled_html(raw_content, is_quill_active):
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
-        body {{
-            font-family: Arial, sans-serif;
-            font-size: 14px;
-            color: #222222;
-            line-height: 1.6;
-            margin: 0;
-            padding: 15px;
-        }}
-        h1, h2, h3, h4 {{
-            color: #111111;
-            margin-top: 15px;
-            margin-bottom: 10px;
-        }}
-        p {{
-            margin-bottom: 12px;
-        }}
-        ul, ol {{
-            margin-top: 5px;
-            margin-bottom: 15px;
-            padding-left: 20px;
-        }}
-        li {{
-            margin-bottom: 6px;
-        }}
-        a {{
-            color: #0066cc;
-            text-decoration: underline;
-        }}
-        b, strong {{
-            font-weight: bold;
-        }}
-        i, em {{
-            font-style: italic;
-        }}
+        body {{ font-family: Arial, sans-serif; font-size: 14px; color: #222222; line-height: 1.6; margin: 0; padding: 15px; }}
+        h1, h2, h3, h4 {{ color: #111111; margin-top: 15px; margin-bottom: 10px; }}
+        p {{ margin-bottom: 12px; }}
+        ul, ol {{ margin-top: 5px; margin-bottom: 15px; padding-left: 20px; }}
+        li {{ margin-bottom: 6px; }}
+        a {{ color: #0066cc; text-decoration: underline; }}
+        b, strong {{ font-weight: bold; }}
+        i, em {{ font-style: italic; }}
     </style>
 </head>
 <body>
-    {body_html}
+    {body_content}
 </body>
 </html>"""
 
@@ -288,6 +259,7 @@ with col_right:
 
 st.divider()
 
+# --- Campaign Message Setup ---
 st.subheader("3. Campaign Message Setup")
 
 subject_template = st.text_input(
@@ -335,21 +307,32 @@ if st.button("🚀 Start Campaign", type="primary", use_container_width=True):
         st.error("❌ Email Body khali nahi ho sakta!")
         st.stop()
 
-    is_quill = (editor_mode == "Rich Text Editor (Quill)")
-    final_email_html = build_original_styled_html(email_body, is_quill_active=is_quill)
+    is_rich = (editor_mode == "Rich Text Editor (Quill)")
+    html_formatted_body = convert_to_html(email_body, is_rich_text=is_rich)
 
     already_sent_emails = set()
     if enable_auto_resume:
         history_df = clean_and_load_history()
         if not history_df.empty and "Recipient" in history_df.columns:
             if "Status" in history_df.columns:
-                sent_mask = history_df["Status"].str.contains("Sent|✅", case=False, na=False)
-                already_sent_emails = set(history_df[sent_mask]["Recipient"].dropna().str.strip().str.lower())
+                sent_mask = history_df["Status"].str.contains(
+                    "Sent|✅", case=False, na=False
+                )
+                already_sent_emails = set(
+                    history_df[sent_mask]["Recipient"]
+                    .dropna()
+                    .str.strip()
+                    .str.lower()
+                )
             else:
-                already_sent_emails = set(history_df["Recipient"].dropna().str.strip().str.lower())
+                already_sent_emails = set(
+                    history_df["Recipient"].dropna().str.strip().str.lower()
+                )
 
         if already_sent_emails:
-            st.info(f"ℹ️ Auto-Resume Active: Pichle 48 hours me {len(already_sent_emails)} emails sent ho chuke hain. Unhe skip kiya jayega.")
+            st.info(
+                f"ℹ️ Auto-Resume Active: Pichle 48 hours me {len(already_sent_emails)} emails sent ho chuke hain. Unhe skip kiya jayega."
+            )
 
     progress_bar = st.progress(0)
     logs_container = st.container()
@@ -381,13 +364,17 @@ if st.button("🚀 Start Campaign", type="primary", use_container_width=True):
         error_reason = "Success"
 
         try:
-            # DIRECT HTML MIME (Pehle jaisa exact format delivery ke liye)
-            msg = MIMEMultipart("related")
+            msg = MIMEMultipart("alternative")
             msg["From"] = formataddr((active_sender_name, sender_email))
             msg["To"] = email
             msg["Subject"] = subject_template
 
-            msg.attach(MIMEText(final_email_html, "html", "utf-8"))
+            # Plain text fallback strip karke generate karein
+            plain_text_fallback = re.sub(r'<[^>]+>', '', html_formatted_body)
+
+            # Pehle Plain Text attach karein, uske baad HTML attach karein
+            msg.attach(MIMEText(plain_text_fallback, "plain", "utf-8"))
+            msg.attach(MIMEText(html_formatted_body, "html", "utf-8"))
 
             server = smtplib.SMTP(active_host, active_port, timeout=15)
             server.starttls()
