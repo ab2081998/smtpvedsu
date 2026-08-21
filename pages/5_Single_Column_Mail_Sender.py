@@ -23,7 +23,6 @@ HISTORY_FILE = os.path.abspath(os.path.join(parent_dir, "email_history.csv"))
 
 try:
     import auth
-
     if hasattr(auth, "require_auth"):
         auth.require_auth()
     elif hasattr(auth, "check_auth"):
@@ -44,12 +43,14 @@ try:
                     st.rerun()
                 else:
                     st.error("❌ Incorrect password!")
-            st.stop()
+                    st.stop()
 except ImportError:
     if not st.session_state["authenticated"]:
         st.warning("🔒 Access Restricted! Please enter password.")
         user_pass = st.text_input(
-            "Please enter Password", type="password", key="p5_auth_pass_input"
+            "Please enter Password",
+            type="password",
+            key="p5_auth_pass_input",
         )
         CORRECT_PASSWORD = st.secrets.get("PASSWORD", "root")
         if st.button("Unlock Page"):
@@ -59,38 +60,30 @@ except ImportError:
                 st.rerun()
             else:
                 st.error("❌ Incorrect password!")
-        st.stop()
-
+                st.stop()
 
 # --- 1. HISTORY & RETENTION HELPERS ---
 def clean_and_load_history():
     """48 hours tak ka history load karta hai aur purana sync karke file me overwrite karta hai"""
     if not os.path.exists(HISTORY_FILE) or os.path.getsize(HISTORY_FILE) == 0:
         return pd.DataFrame()
-
     try:
         df = pd.read_csv(HISTORY_FILE, on_bad_lines="skip", engine="python")
         if df.empty:
             return pd.DataFrame()
-
         df.columns = df.columns.str.strip()
-
         if "Timestamp" in df.columns:
             df["Parsed_Time"] = pd.to_datetime(df["Timestamp"], errors="coerce")
             df = df.dropna(subset=["Parsed_Time"])
-
             cutoff_time = datetime.now() - timedelta(hours=48)
             recent_df = df[df["Parsed_Time"] >= cutoff_time].copy()
-
             if len(recent_df) < len(df):
                 save_df = recent_df.drop(columns=["Parsed_Time"])
                 save_df.to_csv(HISTORY_FILE, index=False, encoding="utf-8")
-
-            return recent_df.drop(columns=["Parsed_Time"])
-        return df
+                return recent_df.drop(columns=["Parsed_Time"])
+            return df
     except Exception:
         return pd.DataFrame()
-
 
 def save_to_history(log_entry):
     """Log record ko history CSV me append karta hai"""
@@ -109,7 +102,6 @@ def save_to_history(log_entry):
     except Exception as err:
         st.error(f"⚠️ History write error: {err}")
 
-
 # Helper functions
 def parse_multi_line_input(text):
     if not text:
@@ -119,7 +111,6 @@ def parse_multi_line_input(text):
         for line in re.split(r"[\n,;]+", text)
         if line and line.strip()
     ]
-
 
 def parse_credentials(text):
     creds = []
@@ -137,6 +128,47 @@ def parse_credentials(text):
             )
     return creds
 
+def get_dynamic_senders(manual_text=""):
+    senders = []
+    # Priority 1: Manual text input from UI
+    if manual_text.strip():
+        senders = parse_credentials(manual_text)
+        if senders:
+            return senders, "Manual Text Area"
+
+    # Priority 2: secrets.toml (SMTP_SENDERS)
+    if "SMTP_SENDERS" in st.secrets:
+        senders = parse_credentials(st.secrets["SMTP_SENDERS"])
+        if senders:
+            return senders, "secrets.toml (SMTP_SENDERS)"
+
+    # Priority 3: secrets.toml (smtp.accounts)
+    if "smtp" in st.secrets and "accounts" in st.secrets["smtp"]:
+        for acc in st.secrets["smtp"]["accounts"]:
+            if "email" in acc and "password" in acc:
+                senders.append({"email": str(acc["email"]).strip(), "password": str(acc["password"]).strip()})
+        if senders:
+            return senders, "secrets.toml (smtp.accounts)"
+
+    # Priority 4: testsmtp.csv file
+    csv_path = os.path.abspath(os.path.join(parent_dir, "testsmtp.csv"))
+    if os.path.exists(csv_path):
+        try:
+            df_smtp = pd.read_csv(csv_path)
+            e_cols = [c for c in df_smtp.columns if "email" in c.lower()]
+            p_cols = [c for c in df_smtp.columns if "pass" in c.lower()]
+            if e_cols and p_cols:
+                for _, row in df_smtp.iterrows():
+                    em = str(row[e_cols[0]]).strip()
+                    pw = str(row[p_cols[0]]).strip()
+                    if em and pw and em.lower() != "nan" and pw.lower() != "nan":
+                        senders.append({"email": em, "password": pw})
+                if senders:
+                    return senders, "testsmtp.csv"
+        except Exception as e:
+            st.error(f"⚠️ CSV read error: {e}")
+
+    return [], "None"
 
 st.title("📧 Single Column Campaign Sender (With Auto Resume)")
 
@@ -147,11 +179,18 @@ with col_left:
     st.subheader("1. SMTP Senders Setup")
     smtp_host = st.text_input("SMTP Server", value="smtp.gmail.com")
     smtp_port = st.number_input("SMTP Port", value=587, step=1)
+    
     sender_text = st.text_area(
-        "Sender Accounts (Format: email:password or email,password)",
+        "Sender Accounts (Optional: leave empty to auto-load from secrets/CSV)",
         height=150,
+        placeholder="email:password or email,password\n(If empty, system auto-fetches from TOML/testsmtp.csv)"
     )
-    senders = parse_credentials(sender_text)
+    
+    senders, source_used = get_dynamic_senders(sender_text)
+    if senders:
+        st.success(f"✅ Loaded {len(senders)} senders automatically from: **{source_used}**")
+    else:
+        st.warning("⚠️ No senders found in Manual Input, secrets.toml, or testsmtp.csv!")
 
 with col_right:
     st.subheader("2. Recipient Data Setup")
@@ -160,16 +199,16 @@ with col_right:
     )
     list_name = st.text_input("Campaign List Name", value="Single_Col_Campaign")
 
-recipient_df = pd.DataFrame()
-if recipients_file:
-    try:
-        if recipients_file.name.endswith(".csv"):
-            recipient_df = pd.read_csv(recipients_file)
-        else:
-            recipient_df = pd.read_excel(recipients_file)
-        st.success(f"✅ Loaded {len(recipient_df)} recipients!")
-    except Exception as e:
-        st.error(f"❌ File read error: {e}")
+    recipient_df = pd.DataFrame()
+    if recipients_file:
+        try:
+            if recipients_file.name.endswith(".csv"):
+                recipient_df = pd.read_csv(recipients_file)
+            else:
+                recipient_df = pd.read_excel(recipients_file)
+            st.success(f"✅ Loaded {len(recipient_df)} recipients!")
+        except Exception as e:
+            st.error(f"❌ File read error: {e}")
 
 st.divider()
 
@@ -199,7 +238,7 @@ st.divider()
 # Campaign Trigger Button
 if st.button("🚀 Start Campaign", type="primary", use_container_width=True):
     if not senders:
-        st.error("❌ Sender accounts enter karein!")
+        st.error("❌ Sender accounts enter karein ya secrets/testsmtp.csv setup karein!")
         st.stop()
 
     if recipient_df.empty:
@@ -318,10 +357,8 @@ st.divider()
 st.subheader("📜 Recent Campaign History (Last 48 Hours)")
 
 history_display_df = clean_and_load_history()
-
 if not history_display_df.empty:
     st.dataframe(history_display_df, use_container_width=True, height=350)
-
     col_dl, col_clr = st.columns(2)
     col_dl.download_button(
         label="📥 Download History CSV",
