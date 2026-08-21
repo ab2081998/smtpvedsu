@@ -62,7 +62,7 @@ except ImportError:
                 st.error("❌ Incorrect password!")
                 st.stop()
 
-# --- 1. HISTORY & RETENTION HELPERS ---
+# --- 1. HISTORY HELPERS ---
 def clean_and_load_history():
     if not os.path.exists(HISTORY_FILE) or os.path.getsize(HISTORY_FILE) == 0:
         return pd.DataFrame()
@@ -139,76 +139,51 @@ def get_dynamic_senders():
     return senders
 
 def make_links_clickable(text):
-    """Auto-converts plain text URLs/emails into styled CRM hyperlinks."""
     if not text:
         return ""
-    
-    # 1. Convert plain email addresses to mailto:
     email_pattern = r'(?<!href="mailto:)(?<!href=")(?<!">)([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)(?![^<]*>)'
-    text = re.sub(email_pattern, r'<a href="mailto:\1" style="color: #0056b3; font-weight: 500; text-decoration: underline;">\1</a>', text)
+    text = re.sub(email_pattern, r'<a href="mailto:\1" style="color: #0066cc; text-decoration: underline;">\1</a>', text)
 
-    # 2. Convert raw https/http URLs
     url_pattern = r'(?<!href=")(?<!src=")(https?://[^\s<"]+)(?![^<]*>)'
-    text = re.sub(url_pattern, r'<a href="\1" target="_blank" style="color: #0056b3; font-weight: 500; text-decoration: underline;">\1</a>', text)
+    text = re.sub(url_pattern, r'<a href="\1" target="_blank" style="color: #0066cc; text-decoration: underline;">\1</a>', text)
 
-    # 3. Convert raw www URLs
     www_pattern = r'(?<!href=")(?<!https://)(?<!http://)(www\.[^\s<"]+)(?![^<]*>)'
-    text = re.sub(www_pattern, r'<a href="https://\1" target="_blank" style="color: #0056b3; font-weight: 500; text-decoration: underline;">\1</a>', text)
+    text = re.sub(www_pattern, r'<a href="https://\1" target="_blank" style="color: #0066cc; text-decoration: underline;">\1</a>', text)
 
     return text
 
-def strip_html_tags(html_content):
-    """Creates a clean Plain Text version for MIME fallback."""
-    if not html_content:
-        return ""
-    clean = re.compile('<.*?>')
-    return re.sub(clean, '', html_content)
-
-def build_crm_html_template(body_content, is_rich_text=False):
-    """Wraps campaign content into a high-deliverability CRM email layout."""
+def prepare_full_email_html(body_content, is_quill=False):
+    """Generates complete HTML document preserving all styles, images, and formatting."""
     if not body_content:
         return ""
-
-    if is_rich_text:
+    
+    if is_quill:
         formatted_body = body_content
     else:
-        # For Plain Text Editor Mode: process paragraphs & links
         clickable_text = make_links_clickable(body_content)
         paragraphs = clickable_text.split("\n\n")
-        html_paragraphs = [
-            f"<p style='margin: 0 0 16px 0; font-size: 15px; line-height: 1.6; color: #333333;'>{p.replace('\n', '<br>')}</p>" 
-            for p in paragraphs if p.strip()
-        ]
-        formatted_body = "".join(html_paragraphs)
+        formatted_body = "".join([f"<p style='margin-bottom: 12px;'>{p.replace('\n', '<br>')}</p>" for p in paragraphs if p.strip()])
 
-    # Professional CRM Email Envelope Layout
-    crm_template = f"""<!DOCTYPE html>
-<html lang="en">
+    return f"""<!DOCTYPE html>
+<html>
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="X-UA-Encoding" content="gzip, deflate">
+    <style>
+        body {{ font-family: Arial, Helvetica, sans-serif; font-size: 15px; line-height: 1.6; color: #333333; margin: 0; padding: 10px; }}
+        img {{ max-width: 100% !important; height: auto !important; display: block; margin: 10px 0; }}
+        a {{ color: #0066cc; text-decoration: underline; }}
+        strong, b {{ font-weight: bold; }}
+        em, i {{ font-style: italic; }}
+    </style>
 </head>
-<body style="margin: 0; padding: 0; background-color: #f4f6f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
-    <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f4f6f9; padding: 25px 0;">
-        <tr>
-            <td align="center">
-                <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 620px; background-color: #ffffff; border-radius: 8px; border: 1px solid #e1e6eb; box-shadow: 0 2px 5px rgba(0,0,0,0.03); overflow: hidden;">
-                    <tr>
-                        <td style="padding: 30px 35px; color: #2d3748; font-size: 15px; line-height: 1.6;">
-                            {formatted_body}
-                        </td>
-                    </tr>
-                </table>
-            </td>
-        </tr>
-    </table>
+<body>
+    {formatted_body}
 </body>
 </html>"""
-    return crm_template
 
 # --- 2. MAIN APP UI ---
-st.title("📧 Single Column Email Campaign Sender (CRM Engine)")
+st.title("📧 Single Column Email Campaign Sender")
 
 col_left, col_right = st.columns(2)
 
@@ -272,7 +247,6 @@ with col_right:
 
 st.divider()
 
-# --- Campaign Message Setup ---
 st.subheader("3. Campaign Message Setup")
 
 subject_template = st.text_input(
@@ -287,13 +261,13 @@ editor_mode = st.radio(
 
 if editor_mode == "Plain / Standard Text Input":
     email_body = st.text_area(
-        "Email Body (CRM Auto-Formatter Enabled)",
-        value="Managing employee performance is critical for leaders...\n\nRegister Now: https://www.webinarbrite.com\nNeed assistance? cs@webinarbrite.com",
+        "Email Body",
+        value="Managing employee performance...\n\nRegister Now: https://www.webinarbrite.com\nNeed assistance? cs@webinarbrite.com",
         height=280
     )
 else:
     email_body = st_quill(
-        placeholder="Write your CRM campaign message here...",
+        placeholder="Write your rich formatted email here (Bold, Italic, Flyer images, Links supported)...",
         key="single_col_quill"
     )
 
@@ -320,37 +294,21 @@ if st.button("🚀 Start Campaign", type="primary", use_container_width=True):
         st.error("❌ Email Body khali nahi ho sakta!")
         st.stop()
 
-    is_rich = (editor_mode == "Rich Text Editor (Quill)")
-    
-    # 1. Build High-converting CRM HTML template
-    final_html_body = build_crm_html_template(email_body, is_rich_text=is_rich)
-    
-    # 2. Build Plain Text fallback for high inbox deliverability
-    plain_text_fallback = strip_html_tags(email_body)
+    is_quill_active = (editor_mode == "Rich Text Editor (Quill)")
+    final_html = prepare_full_email_html(email_body, is_quill=is_quill_active)
 
     already_sent_emails = set()
     if enable_auto_resume:
         history_df = clean_and_load_history()
         if not history_df.empty and "Recipient" in history_df.columns:
             if "Status" in history_df.columns:
-                sent_mask = history_df["Status"].str.contains(
-                    "Sent|✅", case=False, na=False
-                )
-                already_sent_emails = set(
-                    history_df[sent_mask]["Recipient"]
-                    .dropna()
-                    .str.strip()
-                    .str.lower()
-                )
+                sent_mask = history_df["Status"].str.contains("Sent|✅", case=False, na=False)
+                already_sent_emails = set(history_df[sent_mask]["Recipient"].dropna().str.strip().str.lower())
             else:
-                already_sent_emails = set(
-                    history_df["Recipient"].dropna().str.strip().str.lower()
-                )
+                already_sent_emails = set(history_df["Recipient"].dropna().str.strip().str.lower())
 
         if already_sent_emails:
-            st.info(
-                f"ℹ️ Auto-Resume Active: Pichle 48 hours me {len(already_sent_emails)} emails sent ho chuke hain. Unhe skip kiya jayega."
-            )
+            st.info(f"ℹ️ Auto-Resume Active: Pichle 48 hours me {len(already_sent_emails)} emails sent ho chuke hain. Unhe skip kiya jayega.")
 
     progress_bar = st.progress(0)
     logs_container = st.container()
@@ -382,15 +340,18 @@ if st.button("🚀 Start Campaign", type="primary", use_container_width=True):
         error_reason = "Success"
 
         try:
-            # CRM Dual-part MIME Structure (Prevents Plain-text display/Spam flags)
+            # Multi-part message setup
             msg = MIMEMultipart("alternative")
             msg["From"] = formataddr((active_sender_name, sender_email))
             msg["To"] = email
             msg["Subject"] = subject_template
 
-            # Attach Plain Text first, then HTML (Standard CRM practice)
-            msg.attach(MIMEText(plain_text_fallback, "plain", "utf-8"))
-            msg.attach(MIMEText(final_html_body, "html", "utf-8"))
+            # Plain text fall-back version for email clients
+            plain_text = re.sub(r'<[^>]+>', '', final_html)
+            
+            # Attach plain text FIRST, HTML SECOND (Crucial for Gmail/Outlook HTML rendering)
+            msg.attach(MIMEText(plain_text, "plain", "utf-8"))
+            msg.attach(MIMEText(final_html, "html", "utf-8"))
 
             server = smtplib.SMTP(active_host, active_port, timeout=15)
             server.starttls()
