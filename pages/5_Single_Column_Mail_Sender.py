@@ -323,6 +323,9 @@ if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
     smtp_port = st.session_state["smtp_port"]
     sender_name = st.session_state["smtp_name"]
 
+    # Current Uploaded File Name Extract Karein List Name Key ke liye
+    current_list_name = uploaded_file.name if uploaded_file is not None else "N/A"
+
     total_records = len(df)
     current_body = active_body
 
@@ -373,6 +376,7 @@ if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
                     "Sender": sender_email,
                     "Recipient": recipient_email,
                     "Subject": subject_input,
+                    "List_Name": current_list_name,
                     "Status": "Failed ❌",
                     "Reason": "Invalid Email",
                 }
@@ -440,6 +444,7 @@ if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
                         "Sender": sender_email,
                         "Recipient": recipient_email,
                         "Subject": custom_subject,
+                        "List_Name": current_list_name,
                         "Status": "Sent ✅",
                         "Reason": "Success",
                     }
@@ -465,6 +470,7 @@ if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
                             "Sender": sender_email,
                             "Recipient": recipient_email,
                             "Subject": custom_subject,
+                            "List_Name": current_list_name,
                             "Status": "Failed ❌",
                             "Reason": str(e),
                         }
