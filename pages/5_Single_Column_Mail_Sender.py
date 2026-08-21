@@ -111,10 +111,11 @@ def get_dynamic_senders():
             em = acc.get("email")
             pw = acc.get("pass") or acc.get("password")
             if em and pw:
+                clean_pw = str(pw).strip().strip('"').strip("'").replace(" ", "")
                 senders.append({
-                    "name": acc.get("name", acc_key).strip(),
+                    "name": str(acc.get("name", acc_key)).strip(),
                     "email": str(em).strip(),
-                    "password": str(pw).strip().replace(" ", ""),
+                    "password": clean_pw,
                     "server": str(acc.get("server", "smtp.gmail.com")).strip(),
                     "port": int(acc.get("port", 587))
                 })
@@ -123,10 +124,11 @@ def get_dynamic_senders():
     if not senders and "smtp" in st.secrets and "accounts" in st.secrets["smtp"]:
         for idx, acc in enumerate(st.secrets["smtp"]["accounts"]):
             if "email" in acc and "password" in acc:
+                clean_pw = str(acc["password"]).strip().strip('"').strip("'").replace(" ", "")
                 senders.append({
                     "name": str(acc.get("name", f"Account {idx+1}")).strip(),
                     "email": str(acc["email"]).strip(),
-                    "password": str(acc["password"]).strip().replace(" ", ""),
+                    "password": clean_pw,
                     "server": str(acc.get("server", "smtp.gmail.com")).strip(),
                     "port": int(acc.get("port", 587))
                 })
@@ -179,16 +181,23 @@ with col_right:
         list_name = os.path.splitext(recipients_file.name)[0]
         try:
             if recipients_file.name.endswith(".csv"):
-                recipient_df = pd.read_csv(recipients_file, header=None)
+                recipient_df = pd.read_csv(recipients_file)
             else:
-                recipient_df = pd.read_excel(recipients_file, header=None)
+                recipient_df = pd.read_excel(recipients_file)
             
-            # Agar file me headers/column name pehle se hai toh auto-skip logic
-            first_val = str(recipient_df.iloc[0, 0]).strip()
-            if "@" not in first_val:
-                recipient_df = recipient_df.iloc[1:].reset_index(drop=True)
-                
-            st.success(f"✅ Loaded {len(recipient_df)} email addresses from list '{list_name}'")
+            # Extract first column values
+            first_col = recipient_df.iloc[:, 0]
+            valid_emails = []
+            
+            for item in first_col:
+                val = str(item).strip()
+                if "@" in val and "." in val:
+                    email_match = re.search(r"[\w\.-]+@[\w\.-]+\.\w+", val)
+                    if email_match:
+                        valid_emails.append(email_match.group(0))
+            
+            recipient_df = pd.DataFrame({"email": valid_emails})
+            st.success(f"✅ Loaded {len(recipient_df)} valid emails from '{list_name}'")
         except Exception as e:
             st.error(f"❌ File read error: {e}")
 
@@ -256,14 +265,7 @@ if st.button("🚀 Start Campaign", type="primary", use_container_width=True):
     total_senders = len(selected_senders)
 
     for idx, row in recipient_df.iterrows():
-        # Single column reading logic
-        raw_email = str(row.iloc[0]).strip()
-        
-        # Simple email validation via regex
-        email_match = re.search(r"[\w\.-]+@[\w\.-]+\.\w+", raw_email)
-        if not email_match:
-            continue
-        email = email_match.group(0)
+        email = str(row["email"]).strip()
 
         if enable_auto_resume and email.lower() in already_sent_emails:
             with logs_container:
