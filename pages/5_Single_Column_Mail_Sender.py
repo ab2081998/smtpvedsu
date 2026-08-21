@@ -112,11 +112,15 @@ def get_dynamic_senders():
             pw = acc.get("pass") or acc.get("password")
             if em and pw:
                 clean_pw = str(pw).strip().strip('"').strip("'").replace(" ", "")
+                # Resend style SMTP handles 'user' separately from 'email'
+                smtp_user = str(acc.get("user") or em).strip()
+                
                 senders.append({
                     "name": str(acc.get("name", acc_key)).strip(),
                     "email": str(em).strip(),
+                    "user": smtp_user,
                     "password": clean_pw,
-                    "server": str(acc.get("server", "smtp.gmail.com")).strip(),
+                    "server": str(acc.get("server", "smtp.resend.com")).strip(),
                     "port": int(acc.get("port", 587))
                 })
 
@@ -125,11 +129,14 @@ def get_dynamic_senders():
         for idx, acc in enumerate(st.secrets["smtp"]["accounts"]):
             if "email" in acc and "password" in acc:
                 clean_pw = str(acc["password"]).strip().strip('"').strip("'").replace(" ", "")
+                em = str(acc["email"]).strip()
+                smtp_user = str(acc.get("user") or em).strip()
                 senders.append({
                     "name": str(acc.get("name", f"Account {idx+1}")).strip(),
-                    "email": str(acc["email"]).strip(),
+                    "email": em,
+                    "user": smtp_user,
                     "password": clean_pw,
-                    "server": str(acc.get("server", "smtp.gmail.com")).strip(),
+                    "server": str(acc.get("server", "smtp.resend.com")).strip(),
                     "port": int(acc.get("port", 587))
                 })
 
@@ -174,30 +181,27 @@ with col_right:
         "Upload CSV/Excel (Single Column Email File)", type=["csv", "xlsx"]
     )
 
-    recipient_df = pd.DataFrame()
+    recipient_emails = []
     list_name = "Single_Col_Campaign"
     
     if recipients_file:
         list_name = os.path.splitext(recipients_file.name)[0]
         try:
             if recipients_file.name.endswith(".csv"):
-                recipient_df = pd.read_csv(recipients_file)
+                df_raw = pd.read_csv(recipients_file, header=None)
             else:
-                recipient_df = pd.read_excel(recipients_file)
+                df_raw = pd.read_excel(recipients_file, header=None)
             
-            # Extract first column values
-            first_col = recipient_df.iloc[:, 0]
-            valid_emails = []
+            # Extract first column strictly and grab emails
+            first_col_vals = df_raw.iloc[:, 0].astype(str).tolist()
+            for val in first_col_vals:
+                cleaned_val = val.strip()
+                if "@" in cleaned_val and "." in cleaned_val:
+                    match = re.search(r"[\w\.-]+@[\w\.-]+\.\w+", cleaned_val)
+                    if match:
+                        recipient_emails.append(match.group(0))
             
-            for item in first_col:
-                val = str(item).strip()
-                if "@" in val and "." in val:
-                    email_match = re.search(r"[\w\.-]+@[\w\.-]+\.\w+", val)
-                    if email_match:
-                        valid_emails.append(email_match.group(0))
-            
-            recipient_df = pd.DataFrame({"email": valid_emails})
-            st.success(f"✅ Loaded {len(recipient_df)} valid emails from '{list_name}'")
+            st.success(f"✅ Loaded {len(recipient_emails)} emails from file '{list_name}'")
         except Exception as e:
             st.error(f"❌ File read error: {e}")
 
@@ -229,8 +233,8 @@ if st.button("🚀 Start Campaign", type="primary", use_container_width=True):
         st.error("❌ Please setup valid accounts in secrets.toml!")
         st.stop()
 
-    if recipient_df.empty:
-        st.error("❌ Recipient file upload karein!")
+    if not recipient_emails:
+        st.error("❌ Please upload a valid CSV file containing email addresses!")
         st.stop()
 
     already_sent_emails = set()
@@ -254,18 +258,17 @@ if st.button("🚀 Start Campaign", type="primary", use_container_width=True):
 
         if already_sent_emails:
             st.info(
-                f"ℹ️ Auto-Resume Active: Pichle 48 hours me {len(already_sent_emails)} emails already sent hain. Unhe skip kiya jayega."
+                f"ℹ️ Auto-Resume Active: Pichle 48 hours me {len(already_sent_emails)} emails sent ho chuke hain. Unhe skip kiya jayega."
             )
 
     progress_bar = st.progress(0)
     logs_container = st.container()
 
-    total_recipients = len(recipient_df)
+    total_recipients = len(recipient_emails)
     sender_index = 0
     total_senders = len(selected_senders)
 
-    for idx, row in recipient_df.iterrows():
-        email = str(row["email"]).strip()
+    for idx, email in enumerate(recipient_emails):
 
         if enable_auto_resume and email.lower() in already_sent_emails:
             with logs_container:
@@ -275,6 +278,7 @@ if st.button("🚀 Start Campaign", type="primary", use_container_width=True):
 
         curr_sender = selected_senders[sender_index % total_senders]
         sender_email = curr_sender["email"]
+        smtp_login_user = curr_sender["user"]  # Resend requires 'resend' as username
         sender_pass = curr_sender["password"]
         active_host = curr_sender["server"]
         active_port = curr_sender["port"]
@@ -295,7 +299,7 @@ if st.button("🚀 Start Campaign", type="primary", use_container_width=True):
 
             server = smtplib.SMTP(active_host, active_port, timeout=15)
             server.starttls()
-            server.login(sender_email, sender_pass)
+            server.login(smtp_login_user, sender_pass)
             server.sendmail(sender_email, email, msg.as_string())
             server.quit()
 
