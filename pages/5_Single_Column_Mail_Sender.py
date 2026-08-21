@@ -83,16 +83,16 @@ if "smtp_port" not in st.session_state:
 if "smtp_name" not in st.session_state:
     st.session_state["smtp_name"] = first_profile["name"]
 
-DEFAULT_TEMPLATE = """<p>Hi {Name},</p>
-<p>I hope this email finds you well.</p>
-<p>Write your message here...</p>
-<br>
-<p style="margin-top: 15px; color: #555555; line-height: 1.6;">
+# DEFAULT HTML TEMPLATE (Left Aligned with <br> line breaks)
+DEFAULT_TEMPLATE = """Hi {Name},<br><br>
+I hope this email finds you well.<br><br>
+Write your message here...<br><br>
+<div style="text-align: left; margin-top: 10px; color: #555555; line-height: 1.5;">
     <strong>WebinarBrite</strong><br>
     2438 Industrial Blvd #1003, Abilene, TX 79605, United States<br>
     Need assistance? <a href="mailto:cs@webinarbrite.com" style="color: #0066cc; text-decoration: underline;">cs@webinarbrite.com</a><br>
     If you do not wish to receive future webinar invites, please <a href="https://webinarbrite.com/unsubscribe" style="color: #0066cc; text-decoration: underline;">Unsubscribe Here</a>
-</p>"""
+</div>"""
 
 if "editor_text" not in st.session_state:
     st.session_state["editor_text"] = DEFAULT_TEMPLATE
@@ -111,18 +111,20 @@ def build_bulletproof_html(raw_html_or_text):
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
-        body {{ font-family: Arial, sans-serif; font-size: 14px; color: #222222; line-height: 1.6; margin: 0; padding: 15px; }}
-        p {{ margin-top: 0px; margin-bottom: 12px; line-height: 1.6; }}
-        h1, h2, h3, h4 {{ color: #111111; margin-top: 15px; margin-bottom: 10px; }}
-        ul, ol {{ margin-top: 5px; margin-bottom: 15px; padding-left: 20px; }}
-        li {{ margin-bottom: 6px; line-height: 1.6; }}
+        body {{ font-family: Arial, sans-serif; font-size: 14px; color: #222222; line-height: 1.6; margin: 0; padding: 15px; text-align: left; }}
+        p {{ margin-top: 0px; margin-bottom: 12px; line-height: 1.6; text-align: left; }}
+        h1, h2, h3, h4 {{ color: #111111; margin-top: 15px; margin-bottom: 10px; text-align: left; }}
+        ul, ol {{ margin-top: 5px; margin-bottom: 15px; padding-left: 20px; text-align: left; }}
+        li {{ margin-bottom: 6px; line-height: 1.6; text-align: left; }}
         a {{ color: #0066cc; text-decoration: underline; }}
         b, strong {{ font-weight: bold; }}
         i, em {{ font-style: italic; }}
     </style>
 </head>
-<body>
-    {formatted_content}
+<body style="text-align: left;">
+    <div style="text-align: left;">
+        {formatted_content}
+    </div>
 </body>
 </html>"""
 
@@ -229,7 +231,7 @@ email_col = None
 csv_filename = "Single_Col_Campaign"
 
 if uploaded_file is not None:
-    csv_filename = os.path.splitext(uploaded_file.name)[0]  # DYNAMIC CSV NAME
+    csv_filename = os.path.splitext(uploaded_file.name)[0]
     try:
         df = pd.read_csv(uploaded_file)
         df.columns = df.columns.str.strip()
@@ -395,7 +397,7 @@ if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
                 failed_count += 1
                 log_data = {
                     "Timestamp": now_str,
-                    "List Name": csv_filename, # DYNAMIC CSV NAME FIELD
+                    "List Name": csv_filename,
                     "Sender": sender_email,
                     "Recipient": recipient_email,
                     "Subject": subject_input,
@@ -449,7 +451,7 @@ if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
                     email_sent = True
                     log_data = {
                         "Timestamp": now_str,
-                        "List Name": csv_filename, # DYNAMIC CSV NAME FIELD
+                        "List Name": csv_filename,
                         "Sender": sender_email,
                         "Recipient": recipient_email,
                         "Subject": custom_subject,
@@ -474,7 +476,7 @@ if st.button("🚀 Send Mails Now", type="primary", disabled=(df is None)):
                         failed_count += 1
                         log_data = {
                             "Timestamp": now_str,
-                            "List Name": csv_filename, # DYNAMIC CSV NAME FIELD
+                            "List Name": csv_filename,
                             "Sender": sender_email,
                             "Recipient": recipient_email,
                             "Subject": custom_subject,
